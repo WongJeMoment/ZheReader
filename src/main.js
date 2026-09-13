@@ -26,10 +26,17 @@ import {
   Play,
   Pause,
   Square,
+  Languages,
+  Copy,
+  Network,
+  Lightbulb,
+  Sparkles,
+  UserRound,
 } from "lucide";
 import { listBooks, getFile, putBook, removeBook } from "./storage";
 import { readPreference, savePreference, resolvedTheme } from "./theme";
 import "./style.css";
+import { createStudyPanel } from "./study-panel";
 import { createSpeechPanel } from "./speech-panel";
 const iconSet = {
   BookOpen,
@@ -58,6 +65,12 @@ const iconSet = {
   Play,
   Pause,
   Square,
+  Languages,
+  Copy,
+  Network,
+  Lightbulb,
+  Sparkles,
+  UserRound,
 };
 const i = (name, cls = "") => `<i data-lucide="${name}" class="${cls}"></i>`;
 const esc = (s) =>
@@ -94,7 +107,7 @@ app.innerHTML = `
     <div class="sidebar-bottom"><span class="status-dot"></span>书籍仅保存在此浏览器<button class="icon-button" id="privacy" aria-label="查看存储说明">${i("monitor")}</button></div>
   </aside>
   <div class="main-shell">
-    <header class="topbar"><div class="breadcrumb">阅读空间 <span>/</span> <strong id="crumb">我的书架</strong></div><div class="header-right"><span class="theme-label">${i("leaf")} 自动护眼</span><button class="icon-button theme-open" aria-label="主题设置">${i("sun")}</button><span class="avatar">Z</span></div></header>
+    <header class="topbar"><div class="breadcrumb">阅读空间 <span>/</span> <strong id="crumb">我的书架</strong></div><div class="header-right"><span class="theme-label">${i("leaf")} 自动护眼</span><button class="icon-button theme-open" aria-label="主题设置">${i("sun")}</button><button class="secondary account-open" aria-label="GPT 账号">${i("user-round")} GPT 账号</button><span class="avatar">Z</span></div></header>
     <main class="library-main">
       <section class="welcome"><div><div class="eyebrow">YOUR QUIET CORNER</div><h1>让阅读，<span>慢下来。</span></h1><p>翻开一本书，给自己一段不被打扰的时光。</p></div><button class="primary" id="import-top">${i("plus")} 导入书籍</button></section>
       <section class="hero" id="hero"><div class="hero-copy"><span class="hero-kicker"><span class="status-dot"></span> 随时开始一段新的旅程</span><h2>世界很大，<br>也可以藏在一本书里。</h2><p>从你的第一本 PDF 或 EPUB 开始，<br>在这里，找到属于自己的阅读节奏。</p><button class="hero-action" id="demo">探索阅读体验 ${i("arrow-right")}</button></div><div class="book-scene" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><span class="scene-star">✳</span><div class="scene-book rear"><span>THE ART OF<br>SLOW LIVING</span></div><div class="scene-book front"><div class="cover-top">THE QUIET COLLECTION / 01</div><div class="cover-title">慢读<br><em>时光</em></div><div class="cover-line"></div><span class="cover-subtitle">A MOMENT<br>BETWEEN THE PAGES</span><span class="cover-bottom">ZHEREADER ORIGINAL</span></div><span class="scene-caption">ONE PAGE AT A TIME.</span></div></section>
@@ -106,12 +119,12 @@ app.innerHTML = `
   </div>
 </div>
 <section id="reader-view" class="reader-view" hidden aria-label="阅读器">
-  <header class="reader-header"><button class="secondary" id="back">${i("chevron-left")}<span>书架</span></button><div class="reader-heading"><strong id="reader-title"></strong><span id="reader-subtitle"></span></div><div class="reader-actions"><button class="secondary speech-toggle" id="speech-toggle" aria-label="语音朗读" aria-expanded="false" aria-controls="speech-panel">${i("headphones")}<span>听书</span></button><button class="icon-button" id="toc-toggle" aria-label="目录与书签">${i("list")}</button><button class="icon-button" id="add-bookmark" aria-label="添加书签">${i("bookmark")}</button><button class="icon-button theme-open" aria-label="主题设置">${i("sun")}</button><button class="icon-button" id="fullscreen" aria-label="全屏阅读">${i("maximize")}</button></div></header>
+  <header class="reader-header"><button class="secondary" id="back">${i("chevron-left")}<span>书架</span></button><div class="reader-heading"><strong id="reader-title"></strong><span id="reader-subtitle"></span></div><div class="reader-actions"><button class="icon-button account-open" aria-label="GPT 账号">${i("user-round")}</button><button class="icon-button" id="study-toggle" aria-label="英语学习助手" aria-expanded="false">${i("languages")}</button><button class="secondary speech-toggle" id="speech-toggle" aria-label="语音朗读" aria-expanded="false" aria-controls="speech-panel">${i("headphones")}<span>听书</span></button><button class="icon-button" id="toc-toggle" aria-label="目录与书签">${i("list")}</button><button class="icon-button" id="add-bookmark" aria-label="添加书签">${i("bookmark")}</button><button class="icon-button theme-open" aria-label="主题设置">${i("sun")}</button><button class="icon-button" id="fullscreen" aria-label="全屏阅读">${i("maximize")}</button></div></header>
   <div class="reader-body"><aside id="toc-panel" class="toc-panel" hidden><div class="toc-header"><h3>目录与书签</h3><button class="icon-button" id="toc-close" aria-label="关闭目录">${i("x")}</button></div><div class="toc-tabs"><button class="active" id="chapters-tab">目录</button><button id="bookmarks-tab">书签</button></div><div id="toc-list"></div></aside><div class="reading-stage" id="reading-stage"><div id="reader-loading" class="reader-loading">正在打开书籍…</div><div id="pdf-container"><div class="pdf-page" id="pdf-page"><canvas id="pdf-canvas"></canvas><div id="pdf-text" class="textLayer"></div></div></div><div id="epub-container"></div></div></div>
   <footer class="reader-footer"><span class="reader-progress" id="reader-progress">准备阅读</span><div class="page-controls"><button class="icon-button" id="prev-page" aria-label="上一页">${i("chevron-left")}</button><label id="pdf-jump"><input id="page-number" type="number" min="1" aria-label="跳转页码"><span id="page-total"></span></label><span id="epub-position" hidden></span><button class="icon-button" id="next-page" aria-label="下一页">${i("chevron-right")}</button></div><div class="size-controls"><button class="icon-button" id="size-down" aria-label="缩小字号或页面">${i("minus")}</button><span id="size-label">100%</span><button class="icon-button" id="size-up" aria-label="放大字号或页面">${i("plus")}</button></div></footer>
 </section>
 <dialog id="theme-dialog"><div class="dialog-title"><h2>让眼睛，也放松一下</h2><button class="icon-button" data-close="theme-dialog" aria-label="关闭主题设置">${i("x")}</button></div><p>选择适合此刻的阅读氛围。</p><div class="theme-options"><button data-theme-mode="auto">${i("monitor")}<strong>跟随时间</strong><span>昼夜自动切换</span></button><button data-theme-mode="light">${i("sun")}<strong>暖纸浅色</strong><span>柔和米白 · 鼠尾草绿</span></button><button data-theme-mode="dark">${i("moon")}<strong>静夜深色</strong><span>低亮度 · 柔和文字</span></button></div><div class="theme-schedule">${i("clock-3")} 自动模式：20:00–次日 07:00 使用深色，其余时间使用浅色。按设备本地时间切换。</div></dialog>
-<dialog id="info-dialog"><div class="dialog-title"><h2>属于你的本地书架</h2><button class="icon-button" data-close="info-dialog" aria-label="关闭存储说明">${i("x")}</button></div><p>导入的书籍、进度和书签保存在当前浏览器中，不上传至服务器，也不会同步到其他设备。</p><p>请保留原始文件。清除网站数据、使用隐私浏览或更换浏览器后，本地书架可能丢失。支持未加密的 EPUB；PDF 可在打开时输入密码。</p></dialog>
+<dialog id="info-dialog"><div class="dialog-title"><h2>属于你的本地书架</h2><button class="icon-button" data-close="info-dialog" aria-label="关闭存储说明">${i("x")}</button></div><p>导入的书籍、进度和书签保存在当前浏览器中，不会自动上传整本书，也不会同步到其他设备。使用 GPT 翻译、解析或搜索时，选中的文字及追问会发送给 OpenAI。</p><p>请保留原始文件。清除网站数据、使用隐私浏览或更换浏览器后，本地书架可能丢失。支持未加密的 EPUB；PDF 可在打开时输入密码。</p></dialog>
 <dialog id="delete-dialog"><div class="dialog-title"><h2>移除这本书？</h2></div><p id="delete-message"></p><div class="dialog-actions"><button class="secondary" data-close="delete-dialog">取消</button><button class="danger" id="confirm-delete">移除书籍</button></div></dialog>
 <input type="file" id="file-input" accept=".pdf,.epub,application/pdf,application/epub+zip" multiple hidden>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div><div id="drag-overlay" hidden>${i("upload")}<h2>把好书，放进来。</h2><p>松开以导入 PDF 或 EPUB</p></div>`;
@@ -132,6 +145,13 @@ const speechUI = createSpeechPanel({
   refreshIcons: icons,
   notify: toast,
 });
+const studyUI = createStudyPanel({
+  icon: i,
+  refreshIcons: icons,
+  notify: toast,
+  speechUI,
+});
+$("#speech-toggle").addEventListener("click", () => studyUI.close());
 function updateTheme() {
   const theme = resolvedTheme(themeMode);
   document.documentElement.dataset.theme = theme;
@@ -402,6 +422,8 @@ let toc = [],
   showBookmarks = false;
 async function openBook(id) {
   speechUI.reset();
+  studyUI.reset();
+  studyUI.setReady(false);
   const token = ++openToken;
   active = books.find((b) => b.id === id);
   if (!active) return;
@@ -430,8 +452,11 @@ async function openBook(id) {
       book: current,
       data,
       fontSize,
-      onSelection: (text) => {
-        if (token === openToken) speechUI.selection(text);
+      onSelection: (text, rect) => {
+        if (token === openToken) {
+          speechUI.selection(text);
+          studyUI.selection(text, rect);
+        }
       },
       onProgress: async (position, progress, label) => {
         if (token !== openToken) return;
@@ -470,6 +495,7 @@ async function openBook(id) {
       active.type === "pdf" ? "100%" : `${fontSize}px`;
     $("#reader-loading").hidden = true;
     speechUI.setReady(true);
+    studyUI.setReady(true);
   } catch (error) {
     if (token !== openToken) return;
     $("#reader-loading").textContent =
@@ -479,6 +505,8 @@ async function openBook(id) {
 }
 $("#back").onclick = async () => {
   speechUI.reset();
+  studyUI.reset();
+  studyUI.setReady(false);
   ++openToken;
   reader?.destroy();
   reader = null;
@@ -491,12 +519,14 @@ $("#back").onclick = async () => {
 };
 function navigate(direction) {
   speechUI.selection("");
+  studyUI.reset();
   reader?.turn(direction).catch((e) => toast(e.message || "翻页失败"));
 }
 $("#prev-page").onclick = () => navigate(-1);
 $("#next-page").onclick = () => navigate(1);
 $("#page-number").onchange = (e) => {
   speechUI.selection("");
+  studyUI.reset();
   const page = Number(e.target.value);
   if (Number.isInteger(page) && page >= 1 && page <= active.pages)
     reader?.go(page).catch(() => toast("跳转失败"));
@@ -556,6 +586,8 @@ function renderToc() {
   document.querySelectorAll("[data-toc]").forEach(
     (b) =>
       (b.onclick = () => {
+        speechUI.selection("");
+        studyUI.reset();
         reader
           ?.go(entries[Number(b.dataset.toc)].target)
           .catch(() => toast("无法跳转到该位置"));

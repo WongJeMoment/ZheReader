@@ -179,6 +179,8 @@ export function createSpeechPanel({ getReader, icon, refreshIcons, notify }) {
     $("speech-selected").disabled = !ready || !text || !player.supported;
   }
   return {
+    close,
+    speakSelection,
     selection,
     setReady(value) {
       ready = value;

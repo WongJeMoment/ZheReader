@@ -69,7 +69,14 @@ export class Reader {
         root.contains(selection.focusNode)
       ) {
         const text = selection.toString().trim();
-        if (text) this.onSelection?.(text);
+        if (text) {
+          const rect = selection.getRangeAt(0).getBoundingClientRect();
+          const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
+          this.onSelection?.(text, {
+            left: rect.left + (frame?.left || 0),
+            bottom: rect.bottom + (frame?.top || 0),
+          });
+        }
       }
     };
     doc.addEventListener("pointerup", publish, {
@@ -212,6 +219,7 @@ export class Reader {
         this.onError("章节显示失败，试试从目录打开其他章节"),
       );
       this.rendition.on("keyup", (e) => {
+        if (e.shiftKey) return;
         if (e.key === "ArrowLeft" || e.key === "ArrowRight")
           this.turn(e.key === "ArrowLeft" ? -1 : 1).catch(() =>
             this.onError("翻页失败"),
