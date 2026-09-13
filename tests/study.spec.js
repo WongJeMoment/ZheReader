@@ -246,3 +246,86 @@ test("expanded model picker searches hidden models, preserves selection on failu
   await page.locator(".account-open").first().click();
   await expect(page.locator("#study-model")).toHaveValue("custom-model");
 });
+
+test("translation, analysis and research run independently and tab switches retain results", async ({
+  page,
+}) => {
+  await setup(page);
+  let releaseTranslation, releaseAnalysis;
+  const translationGate = new Promise((r) => (releaseTranslation = r)),
+    analysisGate = new Promise((r) => (releaseAnalysis = r));
+  const requests = [];
+  await page.route("**/api/study", async (route) => {
+    const input = route.request().postDataJSON();
+    requests.push(input.action);
+    if (input.action === "translate") await translationGate;
+    if (input.action === "analyze") await analysisGate;
+    await route.fulfill({
+      json: { ...result, searched: input.action === "research" },
+    });
+  });
+  await openPdf(page);
+  await select(page.locator("#pdf-text span").first());
+  await expect.poll(() => requests).toContain("translate");
+  await page.locator('[data-study-action="analyze"]').click();
+  await expect.poll(() => requests).toContain("analyze");
+  await page.locator('[data-study-tab="research"]').click();
+  await expect(page.locator(".study-search-status")).toContainText(
+    "已进行联网检索",
+  );
+  expect(requests).toEqual(["translate", "analyze", "research"]);
+  releaseAnalysis();
+  releaseTranslation();
+  await expect(page.locator("#study-translation")).toHaveText(
+    result.translation,
+  );
+  await expect(page.locator(".study-search-status")).toBeVisible();
+  await page.locator('[data-study-tab="analyze"]').click();
+  await expect(page.locator(".grammar-part")).toContainText("称呼读者");
+  expect(requests.filter((a) => a === "analyze")).toHaveLength(1);
+});
+
+test("PDF Ctrl-wheel and keyboard zoom keep the website and sidebars at their original size", async ({
+  page,
+}) => {
+  await setup(page);
+  await openPdf(page);
+  await select(page.locator("#pdf-text span").first());
+  await expect(page.locator("#translation-result")).toHaveText(
+    result.translation,
+  );
+  await page.locator('[data-study-action="analyze"]').click();
+  await expect(page.locator("#study-status")).toContainText("已完成");
+  const sidebar = await page.locator("#study-panel").boundingBox();
+  const before = await page.locator("#pdf-page").boundingBox();
+  const header = await page.locator(".reader-header").boundingBox();
+  const width = await page.evaluate(() => innerWidth);
+  const prevented = await page.locator("#pdf-container").evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    const e = new WheelEvent("wheel", {
+      deltaY: -100,
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+      clientX: rect.left + 200,
+      clientY: rect.top + 200,
+    });
+    el.dispatchEvent(e);
+    return e.defaultPrevented;
+  });
+  expect(prevented).toBe(true);
+  await expect(page.locator("#size-label")).toHaveText("110%");
+  await expect
+    .poll(async () => (await page.locator("#pdf-page").boundingBox()).width)
+    .toBeGreaterThan(before.width);
+  expect(await page.locator(".reader-header").boundingBox()).toEqual(header);
+  expect(await page.locator("#study-panel").boundingBox()).toEqual(sidebar);
+  expect(await page.evaluate(() => innerWidth)).toBe(width);
+  await page.keyboard.press("Control+=");
+  await expect(page.locator("#size-label")).toHaveText("120%");
+  await page.keyboard.press("Control+0");
+  await expect(page.locator("#size-label")).toHaveText("100%");
+  await expect
+    .poll(async () => (await page.locator("#pdf-page").boundingBox()).width)
+    .toBeCloseTo(before.width, 0);
+});

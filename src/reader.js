@@ -461,12 +461,30 @@ export class Reader {
     this.fontSize = size;
     this.rendition?.themes.fontSize(`${size}px`);
   }
-  zoom(delta) {
+  zoom(delta, anchor) {
+    const container = document.querySelector("#pdf-container");
+    const page = document.querySelector("#pdf-page");
+    const before = page.getBoundingClientRect();
+    const bounds = container.getBoundingClientRect();
+    const x = anchor?.x ?? bounds.left + bounds.width / 2;
+    const y = anchor?.y ?? bounds.top + bounds.height / 2;
+    const relative = {
+      x: (x - before.left) / before.width,
+      y: (y - before.top) / before.height,
+    };
     this.scale = Math.max(
       0.5,
       Math.min(2.5, Math.round((this.scale + delta * 0.1) * 10) / 10),
     );
-    this.renderPdf().catch(() => this.onError("页面缩放失败"));
+    const scale = this.scale;
+    this.renderPdf()
+      .then(() => {
+        if (this.destroyed || this.scale !== scale) return;
+        const after = page.getBoundingClientRect();
+        container.scrollLeft += after.left + relative.x * after.width - x;
+        container.scrollTop += after.top + relative.y * after.height - y;
+      })
+      .catch(() => this.onError("页面缩放失败"));
   }
   destroy() {
     this.destroyed = true;

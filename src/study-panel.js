@@ -42,7 +42,6 @@ export function createStudyPanel({ icon, refreshIcons, notify, speechUI }) {
     anchor = null,
     version = 0,
     translationAbort,
-    detailAbort,
     debounce,
     action = "analyze",
     lastQuestion = "",
@@ -52,6 +51,8 @@ export function createStudyPanel({ icon, refreshIcons, notify, speechUI }) {
   let model = readPreference("zr-study-model", "");
   let modelCatalog = [];
   const cache = new Map();
+  const details = new Map();
+  const detailQuestions = new Map();
   const accountButtons = () => document.querySelectorAll(".account-open");
   function setCache(key, value) {
     if (cache.size >= 80) cache.delete(cache.keys().next().value);
@@ -90,6 +91,7 @@ export function createStudyPanel({ icon, refreshIcons, notify, speechUI }) {
     { error = false, login = false } = {},
   ) {
     $("translation-result").textContent = message;
+    if (!translation) $("study-translation").textContent = message;
     card.classList.toggle("has-error", error);
     $("translation-retry").hidden = !error;
     $("translation-account").hidden = !login;
@@ -98,13 +100,19 @@ export function createStudyPanel({ icon, refreshIcons, notify, speechUI }) {
   function actionsEnabled(enabled) {
     card
       .querySelectorAll("[data-study-action]")
-      .forEach((b) => (b.disabled = !enabled));
+      .forEach(
+        (b) =>
+          (b.disabled =
+            !text || text.length > 8000 || !bridge.accountInfo?.loggedIn),
+      );
     $("translation-copy").disabled = !enabled;
   }
   function stopRequests() {
     clearTimeout(debounce);
     translationAbort?.abort();
-    detailAbort?.abort();
+    for (const task of details.values()) task.controller.abort();
+    details.clear();
+    detailQuestions.clear();
   }
   function clear() {
     version++;
@@ -269,54 +277,85 @@ export function createStudyPanel({ icon, refreshIcons, notify, speechUI }) {
       content.append(block);
     }
   }
-  async function detail(kind, question = "") {
-    if (!text || !translation) {
-      if (text) {
-        card.hidden = false;
-        positionCard();
-      } else notify("先在正文中选择一句话。");
+  async function detail(kind, question = detailQuestions.get(kind) || "") {
+    if (!text) {
+      notify("先在正文中选择一句话。");
       return;
     }
     action = kind;
     lastQuestion = question;
-    detailAbort?.abort();
-    detailAbort = new AbortController();
-    const signal = detailAbort.signal;
+    detailQuestions.set(kind, question);
     const current = version;
     speechUI.close();
     card.hidden = true;
     panel.hidden = false;
     $("study-toggle").setAttribute("aria-expanded", "true");
+    $("study-translation").textContent =
+      translation || $("translation-result").textContent;
     document
       .querySelectorAll("[data-study-tab]")
       .forEach((b) =>
-        b.classList.toggle("active", b.dataset.studyTab === action),
+        b.classList.toggle("active", b.dataset.studyTab === kind),
       );
     $("study-content").replaceChildren();
     $("study-status").textContent =
-      action === "research" ? "正在检索并整理来源…" : "正在分析这句话…";
+      kind === "research" ? "正在检索并整理来源…" : "正在分析这句话…";
     $("study-cancel").hidden = false;
     $("study-retry").hidden = true;
+    const cacheKey = key(kind, question);
+    let task = details.get(kind);
+    if (task && task.key !== cacheKey) {
+      task.controller.abort();
+      details.delete(kind);
+      task = null;
+    }
     try {
-      const cacheKey = key(action, question);
       let result = cache.get(cacheKey);
       if (!result) {
-        result = await bridge.study(
-          { action, text, translation, question, model },
-          signal,
-        );
-        if (signal.aborted || version !== current) return;
-        setCache(cacheKey, result);
+        if (!task) {
+          const controller = new AbortController();
+          task = { controller, key: cacheKey };
+          task.promise = bridge
+            .study(
+              { action: kind, text, translation, question, model },
+              controller.signal,
+            )
+            .then((result) => {
+              if (!controller.signal.aborted && version === current)
+                setCache(cacheKey, result);
+              return result;
+            })
+            .finally(() => {
+              if (details.get(kind) === task) details.delete(kind);
+            });
+          details.set(kind, task);
+        }
+        result = await task.promise;
       }
-      if (signal.aborted || version !== current) return;
+      if (
+        version !== current ||
+        action !== kind ||
+        detailQuestions.get(kind) !== question ||
+        task?.controller.signal.aborted
+      )
+        return;
       renderResult(result);
       $("study-status").textContent = `${result.model || "GPT"} · 已完成`;
     } catch (error) {
-      if (signal.aborted || version !== current) return;
+      if (
+        version !== current ||
+        action !== kind ||
+        task?.controller.signal.aborted
+      )
+        return;
       $("study-status").textContent = error.message;
       $("study-retry").hidden = false;
     } finally {
-      if (current === version && !signal.aborted)
+      if (
+        version === current &&
+        action === kind &&
+        !task?.controller.signal.aborted
+      )
         $("study-cancel").hidden = true;
     }
   }
@@ -532,14 +571,12 @@ export function createStudyPanel({ icon, refreshIcons, notify, speechUI }) {
     if (!panel.hidden) {
       panel.hidden = true;
       $("study-toggle").setAttribute("aria-expanded", "false");
-    } else if (translation) detail(action);
-    else if (text) {
-      card.hidden = false;
-      positionCard();
-    } else notify("先在正文中选择一句话，就能翻译与解析。");
+    } else if (text) detail(action);
+    else notify("先在正文中选择一句话，就能翻译与解析。");
   };
   $("study-cancel").onclick = () => {
-    detailAbort?.abort();
+    details.get(action)?.controller.abort();
+    details.delete(action);
     $("study-status").textContent = "已停止";
     $("study-cancel").hidden = true;
     $("study-retry").hidden = false;

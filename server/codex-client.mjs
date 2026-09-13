@@ -27,6 +27,7 @@ export class CodexClient {
     this.listeners = new Set();
     this.nextId = 1;
     this.busy = false;
+    this.activeStudies = 0;
   }
   async ensureStarted() {
     if (!this.starting)
@@ -214,10 +215,11 @@ export class CodexClient {
     return this.rpc("account/rateLimits/read");
   }
   async study(input, signal) {
-    if (this.busy)
-      throw Object.assign(new Error("上一条请求正在结束，请稍后重试。"), {
+    if (this.activeStudies >= 4)
+      throw Object.assign(new Error("已有 4 个学习任务在运行，请稍后重试。"), {
         status: 409,
       });
+    this.activeStudies++;
     this.busy = true;
     let threadId, turnId, listener, timer, onAbort;
     try {
@@ -335,7 +337,8 @@ export class CodexClient {
         await this.rpc("thread/unsubscribe", { threadId }, 3000).catch(
           () => {},
         );
-      this.busy = false;
+      this.activeStudies--;
+      this.busy = this.activeStudies > 0;
     }
   }
   close() {
