@@ -3,6 +3,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { resolve, extname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ZoteroBridge } from "./zotero.mjs";
 import { Nutstore } from "./nutstore.mjs";
 import { CodexClient } from "./codex-client.mjs";
 const defaultDist = fileURLToPath(new URL("../dist/", import.meta.url));
@@ -43,6 +44,7 @@ async function body(req) {
 export function createBridge({
   client = new CodexClient(),
   cloud = new Nutstore(),
+  zotero = new ZoteroBridge(),
   distDir = defaultDist,
   token = randomBytes(32).toString("hex"),
 } = {}) {
@@ -103,6 +105,38 @@ export function createBridge({
         return;
       }
       try {
+        if (url.pathname.startsWith("/api/zotero/")) {
+          const action = url.pathname.slice("/api/zotero/".length);
+          if (action === "status" && req.method === "GET") {
+            json(res, 200, await zotero.status());
+            return;
+          }
+          if (req.method !== "POST") {
+            json(res, 405, { error: "不支持的操作" });
+            return;
+          }
+          const input = await body(req);
+          const abort = new AbortController();
+          res.on("close", () => {
+            if (!res.writableEnded) abort.abort();
+          });
+          let result;
+          if (action === "pair") result = await zotero.pair(abort.signal);
+          else if (action === "catalog")
+            result = await zotero.catalog(abort.signal);
+          else if (action === "sync" || action === "read")
+            result = await zotero.annotation(
+              input,
+              abort.signal,
+              action === "read",
+            );
+          else {
+            json(res, 404, { error: "未知 Zotero 功能" });
+            return;
+          }
+          if (!res.destroyed) json(res, 200, result);
+          return;
+        }
         if (url.pathname.startsWith("/api/cloud/")) {
           const action = url.pathname.slice("/api/cloud/".length);
           if (action === "status" && req.method === "GET") {

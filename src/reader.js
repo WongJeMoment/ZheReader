@@ -72,10 +72,14 @@ export class Reader {
         if (text) {
           const rect = selection.getRangeAt(0).getBoundingClientRect();
           const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
-          this.onSelection?.(text, {
-            left: rect.left + (frame?.left || 0),
-            bottom: rect.bottom + (frame?.top || 0),
-          });
+          this.onSelection?.(
+            text,
+            {
+              left: rect.left + (frame?.left || 0),
+              bottom: rect.bottom + (frame?.top || 0),
+            },
+            this.captureAnnotation(selection),
+          );
         }
       }
     };
@@ -88,6 +92,82 @@ export class Reader {
     root.addEventListener("pointerdown", () => this.onSelection?.(""), {
       signal: this.selectionAbort.signal,
     });
+  }
+  captureAnnotation(selection) {
+    if (!this.pdf || this.renderedPage !== this.page || !this.viewport)
+      return null;
+    const range = selection.getRangeAt(0),
+      bounds = document.querySelector("#pdf-page").getBoundingClientRect();
+    const rects = [],
+      seen = new Set();
+    for (const rect of range.getClientRects()) {
+      const left = Math.max(0, rect.left - bounds.left),
+        top = Math.max(0, rect.top - bounds.top),
+        right = Math.min(bounds.width, rect.right - bounds.left),
+        bottom = Math.min(bounds.height, rect.bottom - bounds.top);
+      if (right - left < 0.5 || bottom - top < 0.5) continue;
+      const a = this.viewport.convertToPdfPoint(left, top),
+        b = this.viewport.convertToPdfPoint(right, bottom);
+      const pdfRect = [
+        Math.min(a[0], b[0]),
+        Math.min(a[1], b[1]),
+        Math.max(a[0], b[0]),
+        Math.max(a[1], b[1]),
+      ].map((n) => Math.round(n * 1000) / 1000);
+      const key = pdfRect.join(",");
+      if (!seen.has(key)) {
+        seen.add(key);
+        rects.push(pdfRect);
+      }
+    }
+    if (!rects.length || rects.length > 200) return null;
+    const prefix = range.cloneRange();
+    prefix.selectNodeContents(document.querySelector("#pdf-text"));
+    prefix.setEnd(range.startContainer, range.startOffset);
+    const offset = Math.min(999999, prefix.toString().length),
+      distance = Math.max(
+        0,
+        Math.min(99999, Math.floor((this.pageView?.[3] || 0) - rects[0][3])),
+      );
+    return {
+      position: { pageIndex: this.page - 1, rects },
+      pageLabel: this.pageLabels?.[this.page - 1] || String(this.page),
+      sortIndex: `${String(this.page - 1).padStart(5, "0")}|${String(offset).padStart(6, "0")}|${String(distance).padStart(5, "0")}`,
+    };
+  }
+  setAnnotations(annotations) {
+    this.annotations = annotations;
+    this.renderAnnotations();
+  }
+  renderAnnotations() {
+    const layer = document.querySelector("#pdf-annotations");
+    if (!layer) return;
+    layer.replaceChildren();
+    if (!this.viewport || this.renderedPage !== this.page) return;
+    for (const annotation of this.annotations || []) {
+      if (annotation.position.pageIndex !== this.page - 1) continue;
+      for (const rect of annotation.position.rects) {
+        const r = [
+            ...this.viewport.convertToViewportPoint(rect[0], rect[1]),
+            ...this.viewport.convertToViewportPoint(rect[2], rect[3]),
+          ],
+          mark = document.createElement("span");
+        const left = Math.min(r[0], r[2]),
+          top = Math.min(r[1], r[3]),
+          width = Math.abs(r[2] - r[0]),
+          height = Math.abs(r[3] - r[1]);
+        mark.className = "pdf-highlight " + annotation.type;
+        mark.dataset.annotation = annotation.key;
+        Object.assign(mark.style, {
+          left: `${left}px`,
+          top: `${top}px`,
+          width: `${width}px`,
+          height: `${height}px`,
+        });
+        mark.style.setProperty("--mark-color", annotation.color);
+        layer.append(mark);
+      }
+    }
   }
   async *speechSections({ fromCurrent = false, signal } = {}) {
     if (this.pdf) {
@@ -279,6 +359,8 @@ export class Reader {
   async renderPdf() {
     if (this.destroyed) return;
     const version = ++this.renderVersion;
+    this.renderedPage = null;
+    this.renderAnnotations();
     if (this.renderTask) {
       this.renderTask.cancel();
       await this.renderTask.promise.catch(() => {});
@@ -331,6 +413,10 @@ export class Reader {
     });
     await this.textLayer.render().catch(() => {});
     if (version !== this.renderVersion || this.destroyed) return;
+    this.viewport = viewport;
+    this.pageView = page.view;
+    this.renderedPage = pageNumber;
+    this.renderAnnotations();
     this.atStart = pageNumber === 1;
     this.atEnd = pageNumber === this.pdf.numPages;
     this.onProgress(

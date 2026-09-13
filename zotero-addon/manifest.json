@@ -1,0 +1,14 @@
+{
+  "manifest_version": 2,
+  "name": "ZheReader Zotero Bridge",
+  "version": "1.0.0",
+  "description": "将个人文库分类与 ZheReader 关联，并接收 PDF 高亮、下划线和评论。",
+  "author": "ZheReader",
+  "applications": {
+    "zotero": {
+      "id": "zhereader@wongjemoment.github.io",
+      "strict_min_version": "9.0",
+      "strict_max_version": "9.0.*"
+    }
+  }
+}

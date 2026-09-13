@@ -33,10 +33,13 @@ import {
   Sparkles,
   UserRound,
   Cloud,
+  Highlighter,
 } from "lucide";
 import { listBooks, getFile, putBook, removeBook } from "./storage";
 import { readPreference, savePreference, resolvedTheme } from "./theme";
 import "./style.css";
+import { createZoteroPanel } from "./zotero-panel";
+import { createAnnotationPanel } from "./annotation-panel";
 import { createCloudPanel } from "./cloud-panel";
 import { createStudyPanel } from "./study-panel";
 import { createSpeechPanel } from "./speech-panel";
@@ -74,6 +77,7 @@ const iconSet = {
   Sparkles,
   UserRound,
   Cloud,
+  Highlighter,
 };
 const i = (name, cls = "") => `<i data-lucide="${name}" class="${cls}"></i>`;
 const esc = (s) =>
@@ -106,7 +110,9 @@ app.innerHTML = `
       <button class="nav-item" data-filter="recent">${i("clock-3")}<span>最近阅读</span></button>
       <button class="nav-item" data-filter="bookmarked">${i("bookmark")}<span>我的书签</span></button>
       <button class="nav-item" id="cloud-open">${i("cloud")}<span>坚果云论文</span></button>
+      <button class="nav-item" id="zotero-open">${i("highlighter")}<span>Zotero 分类与标注</span></button>
     </nav>
+    <div id="zotero-collections" class="zotero-collections"></div>
     <div class="sidebar-note"><div class="little-leaf">${i("leaf")}</div><p>把时间留给<br>值得读的文字。</p><span>A LITTLE LESS NOISE,<br>A LITTLE MORE READING.</span></div>
     <div class="sidebar-bottom"><span class="status-dot"></span>书籍仅保存在此浏览器<button class="icon-button" id="privacy" aria-label="查看存储说明">${i("monitor")}</button></div>
   </aside>
@@ -123,8 +129,8 @@ app.innerHTML = `
   </div>
 </div>
 <section id="reader-view" class="reader-view" hidden aria-label="阅读器">
-  <header class="reader-header"><button class="secondary" id="back">${i("chevron-left")}<span>书架</span></button><div class="reader-heading"><strong id="reader-title"></strong><span id="reader-subtitle"></span></div><div class="reader-actions"><button class="icon-button account-open" aria-label="GPT 账号">${i("user-round")}</button><button class="icon-button" id="study-toggle" aria-label="英语学习助手" aria-expanded="false">${i("languages")}</button><button class="secondary speech-toggle" id="speech-toggle" aria-label="语音朗读" aria-expanded="false" aria-controls="speech-panel">${i("headphones")}<span>听书</span></button><button class="icon-button" id="toc-toggle" aria-label="目录与书签">${i("list")}</button><button class="icon-button" id="add-bookmark" aria-label="添加书签">${i("bookmark")}</button><button class="icon-button theme-open" aria-label="主题设置">${i("sun")}</button><button class="icon-button" id="fullscreen" aria-label="全屏阅读">${i("maximize")}</button></div></header>
-  <div class="reader-body"><aside id="toc-panel" class="toc-panel" hidden><div class="toc-header"><h3>目录与书签</h3><button class="icon-button" id="toc-close" aria-label="关闭目录">${i("x")}</button></div><div class="toc-tabs"><button class="active" id="chapters-tab">目录</button><button id="bookmarks-tab">书签</button></div><div id="toc-list"></div></aside><div class="reading-stage" id="reading-stage"><div id="reader-loading" class="reader-loading">正在打开书籍…</div><div id="pdf-container"><div class="pdf-page" id="pdf-page"><canvas id="pdf-canvas"></canvas><div id="pdf-text" class="textLayer"></div></div></div><div id="epub-container"></div></div></div>
+  <header class="reader-header"><button class="secondary" id="back">${i("chevron-left")}<span>书架</span></button><div class="reader-heading"><strong id="reader-title"></strong><span id="reader-subtitle"></span></div><div class="reader-actions"><button class="icon-button account-open" aria-label="GPT 账号">${i("user-round")}</button><button class="icon-button" id="annotation-toggle" aria-label="论文标注" aria-expanded="false">${i("highlighter")}</button><button class="icon-button" id="study-toggle" aria-label="英语学习助手" aria-expanded="false">${i("languages")}</button><button class="secondary speech-toggle" id="speech-toggle" aria-label="语音朗读" aria-expanded="false" aria-controls="speech-panel">${i("headphones")}<span>听书</span></button><button class="icon-button" id="toc-toggle" aria-label="目录与书签">${i("list")}</button><button class="icon-button" id="add-bookmark" aria-label="添加书签">${i("bookmark")}</button><button class="icon-button theme-open" aria-label="主题设置">${i("sun")}</button><button class="icon-button" id="fullscreen" aria-label="全屏阅读">${i("maximize")}</button></div></header>
+  <div class="reader-body"><aside id="toc-panel" class="toc-panel" hidden><div class="toc-header"><h3>目录与书签</h3><button class="icon-button" id="toc-close" aria-label="关闭目录">${i("x")}</button></div><div class="toc-tabs"><button class="active" id="chapters-tab">目录</button><button id="bookmarks-tab">书签</button></div><div id="toc-list"></div></aside><div class="reading-stage" id="reading-stage"><div id="reader-loading" class="reader-loading">正在打开书籍…</div><div id="pdf-container"><div class="pdf-page" id="pdf-page"><canvas id="pdf-canvas"></canvas><div id="pdf-annotations"></div><div id="pdf-text" class="textLayer"></div></div></div><div id="epub-container"></div></div></div>
   <footer class="reader-footer"><span class="reader-progress" id="reader-progress">准备阅读</span><div class="page-controls"><button class="icon-button" id="prev-page" aria-label="上一页">${i("chevron-left")}</button><label id="pdf-jump"><input id="page-number" type="number" min="1" aria-label="跳转页码"><span id="page-total"></span></label><span id="epub-position" hidden></span><button class="icon-button" id="next-page" aria-label="下一页">${i("chevron-right")}</button></div><div class="size-controls"><button class="icon-button" id="size-down" aria-label="缩小字号或页面">${i("minus")}</button><span id="size-label">100%</span><button class="icon-button" id="size-up" aria-label="放大字号或页面">${i("plus")}</button></div></footer>
 </section>
 <dialog id="theme-dialog"><div class="dialog-title"><h2>让眼睛，也放松一下</h2><button class="icon-button" data-close="theme-dialog" aria-label="关闭主题设置">${i("x")}</button></div><p>选择适合此刻的阅读氛围。</p><div class="theme-options"><button data-theme-mode="auto">${i("monitor")}<strong>跟随时间</strong><span>昼夜自动切换</span></button><button data-theme-mode="light">${i("sun")}<strong>暖纸浅色</strong><span>柔和米白 · 鼠尾草绿</span></button><button data-theme-mode="dark">${i("moon")}<strong>静夜深色</strong><span>低亮度 · 柔和文字</span></button></div><div class="theme-schedule">${i("clock-3")} 自动模式：20:00–次日 07:00 使用深色，其余时间使用浅色。按设备本地时间切换。</div></dialog>
@@ -136,6 +142,9 @@ const $ = (s) => document.querySelector(s);
 function icons() {
   createIcons({ icons: iconSet, attrs: { "stroke-width": 1.7 } });
 }
+window.addEventListener("zr-storage-blocked", () =>
+  toast("请关闭其他旧版阅读器标签页，再刷新此页完成存储升级。原有书籍会保留。"),
+);
 let toastTimer;
 function toast(message) {
   $("#toast").textContent = message;
@@ -156,7 +165,33 @@ const studyUI = createStudyPanel({
   notify: toast,
   speechUI,
 });
-$("#speech-toggle").addEventListener("click", () => studyUI.close());
+const zoteroUI = createZoteroPanel({
+  getBooks: () => books,
+  renderBooks,
+  notify: toast,
+  icon: i,
+  refreshIcons: icons,
+});
+const annotationUI = createAnnotationPanel({
+  getBook: () => active,
+  getReader: () => reader,
+  notify: toast,
+  icon: i,
+  refreshIcons: icons,
+  onOpen() {
+    studyUI.close();
+    speechUI.close();
+  },
+  openZotero: () => zoteroUI.open(),
+});
+$("#speech-toggle").addEventListener("click", () => {
+  studyUI.close();
+  annotationUI.close();
+});
+$("#study-toggle").addEventListener("click", () => annotationUI.close());
+document
+  .querySelectorAll("[data-study-action],[data-study-tab]")
+  .forEach((b) => b.addEventListener("click", () => annotationUI.close()));
 function updateTheme() {
   const theme = resolvedTheme(themeMode);
   document.documentElement.dataset.theme = theme;
@@ -222,6 +257,7 @@ function renderBooks() {
       (b) =>
         (filter !== "recent" || b.openedAt) &&
         (filter !== "bookmarked" || b.bookmarks?.length) &&
+        zoteroUI.matches(b) &&
         (format === "all" || b.type === format) &&
         `${b.title} ${b.author}`.toLowerCase().includes(query.toLowerCase()),
     )
@@ -237,7 +273,7 @@ function renderBooks() {
     ? selected
         .map(
           (b) =>
-            `<article class="book-card"><button class="book-open" data-open="${esc(b.id)}" aria-label="阅读 ${esc(b.title)}"><div class="book-cover palette-${b.color}"><span class="book-format">${b.type.toUpperCase()}</span><span class="book-cover-title">${esc(b.title)}</span><span class="book-cover-author">${esc(b.author || "私人藏书")}</span><div class="cover-decoration"></div><span class="book-cover-bottom">ZHEREADER / PERSONAL LIBRARY</span><span class="read-overlay">开始阅读 ${i("arrow-up-right")}</span></div><div class="book-info"><h3>${esc(b.title)}</h3><p>${esc(b.author || (b.type === "pdf" ? `${b.pages} 页 · PDF 文档` : "EPUB 电子书"))}</p><div class="book-progress"><span>${b.openedAt ? `已读 ${Math.round((b.progress || 0) * 100)}%` : "尚未开始"}${b.bookmarks?.length ? ` · ${b.bookmarks.length} 个书签` : ""}</span>${i("arrow-up-right")}</div><div class="progress-track"><span style="width:${Math.round((b.progress || 0) * 100)}%"></span></div></div></button><button class="remove-book icon-button" data-delete="${esc(b.id)}" aria-label="移除 ${esc(b.title)}">${i("trash-2")}</button></article>`,
+            `<article class="book-card"><button class="book-open" data-open="${esc(b.id)}" aria-label="阅读 ${esc(b.title)}"><div class="book-cover palette-${b.color}"><span class="book-format">${b.type.toUpperCase()}</span><span class="book-cover-title">${esc(b.title)}</span><span class="book-cover-author">${esc(b.author || "私人藏书")}</span><div class="cover-decoration"></div><span class="book-cover-bottom">ZHEREADER / PERSONAL LIBRARY</span><span class="read-overlay">开始阅读 ${i("arrow-up-right")}</span></div><div class="book-info"><h3>${esc(b.title)}</h3><p>${esc(b.author || (b.type === "pdf" ? `${b.pages} 页 · PDF 文档` : "EPUB 电子书"))}</p><p class="book-collections">${esc(b.zotero?.collectionPaths?.join(" · ") || (b.zotero ? "Zotero 未分类" : ""))}</p><div class="book-progress"><span>${b.openedAt ? `已读 ${Math.round((b.progress || 0) * 100)}%` : "尚未开始"}${b.bookmarks?.length ? ` · ${b.bookmarks.length} 个书签` : ""}</span>${i("arrow-up-right")}</div><div class="progress-track"><span style="width:${Math.round((b.progress || 0) * 100)}%"></span></div></div></button><button class="remove-book icon-button" data-delete="${esc(b.id)}" aria-label="移除 ${esc(b.title)}">${i("trash-2")}</button></article>`,
         )
         .join("")
     : `<div class="empty-state">${i(query ? "search" : filter === "bookmarked" ? "bookmark" : "book-open")}<h3>${query ? "还没有找到这本书" : filter === "bookmarked" ? "把喜欢的地方，留个记号" : filter === "recent" ? "下一页，从这里开始" : format !== "all" ? `还没有 ${format.toUpperCase()} 书籍` : "你的书架，等一本好书"}</h3><p>${query ? "试试其他书名或作者关键词。" : filter === "bookmarked" ? "阅读时点击书签图标，即可收藏当前页。" : filter === "recent" ? "打开一本书后，阅读记录会出现在这里。" : "导入自己的藏书，或先探索上方的阅读体验。"}</p></div>`;
@@ -293,7 +329,7 @@ let deleteId;
 function askDelete(id) {
   deleteId = id;
   $("#delete-message").textContent =
-    `将从此浏览器移除《${books.find((b) => b.id === id).title}》及其阅读进度和书签。原始文件不受影响。`;
+    `将从此浏览器移除《${books.find((b) => b.id === id).title}》及其阅读进度、书签和本地标注。未同步标注会丢失；原始文件及已同步到 Zotero 的标注保留。`;
   $("#delete-dialog").showModal();
 }
 $("#confirm-delete").onclick = async () => {
@@ -366,7 +402,13 @@ async function importFiles(files) {
         const id = Array.from(new Uint8Array(hash), (b) =>
           b.toString(16).padStart(2, "0"),
         ).join("");
-        if (books.some((b) => b.id === id)) {
+        const existing = books.find((b) => b.id === id);
+        if (existing) {
+          if (file.cloudSource) {
+            existing.cloudSource ||= file.cloudSource;
+            zoteroUI.enrich(existing);
+            await putBook({ ...existing });
+          }
           failures.push(`${file.name}：已在书架中`);
           continue;
         }
@@ -384,6 +426,7 @@ async function importFiles(files) {
           filename: file.name,
           ...(file.cloudSource ? { cloudSource: file.cloudSource } : {}),
         };
+        zoteroUI.enrich(book);
         await putBook(book, data);
         books.push(book);
         success++;
@@ -428,6 +471,11 @@ async function loadDemo() {
 let toc = [],
   showBookmarks = false;
 async function openBook(id) {
+  if (annotationUI.busy) {
+    toast("正在保存或同步标注，请稍候。");
+    return;
+  }
+  annotationUI.reset();
   speechUI.reset();
   studyUI.reset();
   studyUI.setReady(false);
@@ -459,10 +507,11 @@ async function openBook(id) {
       book: current,
       data,
       fontSize,
-      onSelection: (text, rect) => {
+      onSelection: (text, rect, annotation) => {
         if (token === openToken) {
           speechUI.selection(text);
           studyUI.selection(text, rect);
+          annotationUI.selection(text, annotation);
         }
       },
       onProgress: async (position, progress, label) => {
@@ -503,6 +552,7 @@ async function openBook(id) {
     $("#reader-loading").hidden = true;
     speechUI.setReady(true);
     studyUI.setReady(true);
+    await annotationUI.load(current);
   } catch (error) {
     if (token !== openToken) return;
     $("#reader-loading").textContent =
@@ -511,6 +561,11 @@ async function openBook(id) {
   }
 }
 $("#back").onclick = async () => {
+  if (annotationUI.busy) {
+    toast("正在保存或同步标注，请稍候。");
+    return;
+  }
+  annotationUI.reset();
   speechUI.reset();
   studyUI.reset();
   studyUI.setReady(false);
@@ -668,6 +723,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 try {
+  await zoteroUI.ready;
   books = await listBooks();
   renderBooks();
 } catch {

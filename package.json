@@ -5,12 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/prepare-pdf-assets.mjs && vite --host 0.0.0.0",
-    "build": "vite build",
+    "build": "npm run build:addon && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "playwright test",
     "start": "npm run build && node server/index.mjs",
     "bridge": "node server/index.mjs",
-    "test:server": "node --test tests/*.test.mjs"
+    "test:server": "node --test tests/*.test.mjs",
+    "build:addon": "node scripts/build-zotero-addon.mjs"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.12",
