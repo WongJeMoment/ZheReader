@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f6f5f0" />
+    <meta
+      name="description"
+      content="ZheReader — 一处安静的阅读空间。免费在浏览器中阅读 PDF 与 EPUB，自动护眼主题，本地保存阅读进度。"
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>ZheReader · 让阅读，慢下来</title>
+    <script>
+      try {
+        const m = localStorage.getItem("zr-theme") || "auto";
+        const h = new Date().getHours();
+        document.documentElement.dataset.theme =
+          m === "auto" ? (h >= 20 || h < 7 ? "dark" : "light") : m;
+      } catch {
+        document.documentElement.dataset.theme =
+          new Date().getHours() >= 20 || new Date().getHours() < 7
+            ? "dark"
+            : "light";
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
