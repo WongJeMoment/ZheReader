@@ -1,4 +1,5 @@
 import { TaskQueue } from "./task-queue.mjs";
+import { selectStudyModel } from "./model-selection.mjs";
 import {
   guideSchemaFor,
   guidePrompt,
@@ -263,11 +264,7 @@ export class CodexClient {
         !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(input.model)
       )
         throw Object.assign(new Error("模型 ID 格式无效。"), { status: 400 });
-      const model = input.model
-        ? models.find((m) => m.model === input.model) || { model: input.model }
-        : models.find((m) => m.isDefault) ||
-          models.find((m) => !m.hidden) ||
-          models[0];
+      const model = selectStudyModel(models, input);
       if (!model)
         throw new Error("当前账号没有可用模型，请检查订阅或工作空间权限。");
       const r = await this.rpc("thread/start", {

@@ -89,6 +89,7 @@ test("PDF selection translates, then right sidebar analyzes, explains and resear
   await expect(page.locator("#translation-result")).toHaveText(
     result.translation,
   );
+  await expect(page.locator("#translation-model")).toHaveText("翻译模型 · test-model");
   expect(calls[0]).toEqual({
     action: "translate",
     text: "Hello ZheReader",

@@ -188,6 +188,7 @@ test("Codex protocol uses isolated ChatGPT auth, constrained ephemeral turns, sc
             case "model/list":
               respond({
                 data: [
+                  { model: "gpt-5.6-luna", supportedReasoningEfforts: [{ reasoningEffort: "low" }] },
                   {
                     model: "test-model",
                     displayName: "Test",
@@ -257,6 +258,9 @@ test("Codex protocol uses isolated ChatGPT auth, constrained ephemeral turns, sc
   assert.equal(client.activeStudies, 0);
 
   const threads = requests.filter((r) => r.method === "thread/start");
+  assert.equal(threads[0].params.model, "gpt-5.6-luna");
+  assert.equal(threads[1].params.model, "test-model");
+  assert.equal(requests.find((r) => r.method === "turn/start").params.effort, "low");
   assert.equal(threads[0].params.config.web_search, "disabled");
   assert.equal(threads[1].params.config.web_search, "live");
   assert.equal(threads[0].params.sandbox, "read-only");
@@ -267,7 +271,7 @@ test("Codex protocol uses isolated ChatGPT auth, constrained ephemeral turns, sc
   );
   assert.equal(client.busy, false);
   const custom = await client.study({
-    action: "translate",
+    action: "analyze",
     text: "Hi",
     model: "custom-model",
   });
