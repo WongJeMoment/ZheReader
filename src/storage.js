@@ -36,11 +36,13 @@ export async function putBook(book, data) {
 }
 export async function removeBook(id) {
   const tx = (await database).transaction(
-    ["books", "files", "annotations"],
+    ["books", "files", "annotations", "settings"],
     "readwrite",
   );
   await tx.objectStore("books").delete(id);
   await tx.objectStore("files").delete(id);
+  await tx.objectStore("settings").delete("paper-text:" + id);
+  await tx.objectStore("settings").delete("paper-guide:" + id);
   for (const key of await tx
     .objectStore("annotations")
     .index("bookId")

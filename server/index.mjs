@@ -249,6 +249,9 @@ export function createBridge({
               question: input.question || "",
               translation: input.translation || "",
               model: typeof input.model === "string" ? input.model : undefined,
+              ...(input.action.startsWith("paper-")
+                ? { depth: input.depth === "detailed" ? "detailed" : "quick" }
+                : {}),
             },
             abort.signal,
           );

@@ -1,6 +1,6 @@
 import { TaskQueue } from "./task-queue.mjs";
 import {
-  guideSchema,
+  guideSchemaFor,
   guidePrompt,
   validateGuide,
 } from "../shared/paper-guide.js";
@@ -191,10 +191,29 @@ export class CodexClient {
       );
     await this.ensureStarted();
     await this.rpc("account/logout");
+    this.modelCache = null;
     return { ok: true };
   }
-  async models() {
+  async models({ cached = false } = {}) {
     await this.ensureStarted();
+    if (cached && this.modelCache && Date.now() - this.modelCache.at < 30000)
+      return this.modelCache.data;
+    if (cached && this.modelFetch) return this.modelFetch;
+    const request = this.loadModels().then((data) => {
+      this.modelCache = { data, at: Date.now() };
+      return data;
+    });
+    if (cached) {
+      this.modelFetch = request;
+      try {
+        return await request;
+      } finally {
+        this.modelFetch = null;
+      }
+    }
+    return request;
+  }
+  async loadModels() {
     const models = new Map();
     const seen = new Set();
     let cursor;
@@ -220,14 +239,25 @@ export class CodexClient {
     const release = await this.studyQueue.acquire(signal);
     this.activeStudies++;
     this.busy = true;
-    let threadId, turnId, listener, timer, onAbort;
+    let threadId,
+      turnId,
+      listener,
+      timer,
+      onAbort,
+      finished = false;
     try {
-      if (!(await this.account()).loggedIn)
+      const account = await this.account();
+      if (!account.loggedIn)
         throw Object.assign(new Error("请先登录 ChatGPT 账号。"), {
           status: 401,
         });
       if (signal?.aborted) throw new Error("请求已取消");
-      const models = await this.models();
+      const identity = `${account.email}:${account.plan}`;
+      if (this.modelAccount !== identity) {
+        this.modelCache = null;
+        this.modelAccount = identity;
+      }
+      const models = await this.models({ cached: true });
       if (
         input.model &&
         !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(input.model)
@@ -313,35 +343,35 @@ export class CodexClient {
           },
         ],
         outputSchema: input.action.startsWith("paper-")
-          ? guideSchema
+          ? guideSchemaFor(input.action, input.depth)
           : resultSchema,
         ...(effort ? { effort } : {}),
       });
       turnId = started.turn.id;
       if (signal?.aborted) throw new Error("请求已取消");
       await completed;
+      finished = true;
       const result = input.action.startsWith("paper-")
-        ? validateGuide(JSON.parse(finalText), input.text)
+        ? validateGuide(JSON.parse(finalText), input.text, input.action)
         : validateResult(JSON.parse(finalText));
       return { ...result, model: model.model, searched };
     } finally {
       clearTimeout(timer);
       this.listeners.delete(listener);
       signal?.removeEventListener("abort", onAbort);
-      if (threadId && turnId)
+      if (threadId && turnId && !finished)
         await this.rpc("turn/interrupt", { threadId, turnId }, 3000).catch(
           () => {},
         );
       if (threadId)
-        await this.rpc("thread/unsubscribe", { threadId }, 3000).catch(
-          () => {},
-        );
+        this.rpc("thread/unsubscribe", { threadId }, 3000).catch(() => {});
       this.activeStudies--;
       this.busy = this.activeStudies > 0;
       release();
     }
   }
   close() {
+    this.modelCache = null;
     this.proc?.kill();
     this.lines?.close();
     this.starting = null;

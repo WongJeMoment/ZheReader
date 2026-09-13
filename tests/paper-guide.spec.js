@@ -54,13 +54,11 @@ test("paper preparation and stepwise reading quote original pages, cache and rej
     });
   });
   await page.goto("/");
-  await page
-    .locator("#file-input")
-    .setInputFiles({
-      name: "paper.pdf",
-      mimeType: "application/pdf",
-      buffer: samplePdf(),
-    });
+  await page.locator("#file-input").setInputFiles({
+    name: "paper.pdf",
+    mimeType: "application/pdf",
+    buffer: samplePdf(),
+  });
   await page.locator(".book-open").click();
   await expect(page.locator("#reader-loading")).toBeHidden();
   await page.locator("#guide-toggle").click();
@@ -87,8 +85,11 @@ test("paper preparation and stepwise reading quote original pages, cache and rej
   await page.locator("#guide-toggle").click();
   await expect(page.locator("#guide-position")).toContainText("2 / 2");
   expect(calls).toHaveLength(2);
-  bad = true;
   await page.locator("#guide-read").click();
+  await expect(page.locator("#guide-status")).toContainText("已加载缓存");
+  expect(calls).toHaveLength(2);
+  bad = true;
+  await page.locator("#guide-regenerate").click();
   await expect(page.locator("#guide-status")).toContainText(
     "引用未能与原文核对",
   );
@@ -99,4 +100,88 @@ test("paper preparation and stepwise reading quote original pages, cache and rej
     path: "test-results/paper-guide-desktop.png",
     fullPage: true,
   });
+});
+
+test("one-page lookahead is reused, does not run through the whole paper, and settings invalidate cache", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__ZHEREADER_BRIDGE__ = {
+      base: location.origin,
+      token: "a".repeat(64),
+    };
+  });
+  const calls = [];
+  await page.route("**/api/**", async (route) => {
+    if (!route.request().url().endsWith("/study")) {
+      await route.fulfill({ json: { loggedIn: false } });
+      return;
+    }
+    const input = route.request().postDataJSON();
+    calls.push(input);
+    const source = JSON.parse(input.text)[0];
+    await route.fulfill({
+      json: {
+        title: "讲解 " + source.id,
+        summary: "摘要",
+        prerequisites: [],
+        explanations: [
+          {
+            heading: "原文对应",
+            kind: "原文解读",
+            explanation: "解释",
+            sourceId: source.id,
+            quote: source.text,
+          },
+        ],
+        questions: ["问题"],
+        model: "test",
+      },
+    });
+  });
+  await page.goto("/");
+  await page
+    .locator("#file-input")
+    .setInputFiles({
+      name: "Prefetch.pdf",
+      mimeType: "application/pdf",
+      buffer: samplePdf([
+        "First page paragraph.",
+        "Second page paragraph.",
+        "Third page paragraph.",
+      ]),
+    });
+  await page.locator(".book-open").click();
+  await expect(page.locator("#reader-loading")).toBeHidden();
+  await page.locator("#guide-toggle").click();
+  await expect(page.locator("#guide-status")).toContainText("正文已就绪");
+  await page.locator("#guide-read").click();
+  await expect(page.locator("#guide-prefetch-status")).toContainText(
+    "下一段已准备好",
+  );
+  expect(calls).toHaveLength(2);
+  await page.locator("#guide-read").click();
+  await expect(page.locator("#guide-status")).toContainText("已加载缓存");
+  expect(calls).toHaveLength(2);
+  await page.locator("#guide-next").click();
+  await expect(page.locator("#guide-result")).toContainText("讲解 p2-s1");
+  await expect(page.locator("#guide-prefetch-status")).toContainText(
+    "下一段已准备好",
+  );
+  expect(calls).toHaveLength(3);
+  expect(calls.filter((c) => JSON.parse(c.text)[0].page === 2)).toHaveLength(1);
+  await page.locator("#guide-prefetch").uncheck();
+  await page.locator("#guide-depth").selectOption("detailed");
+  await page.locator("#guide-read").click();
+  await expect(page.locator("#guide-status")).toContainText("已完成");
+  expect(calls).toHaveLength(4);
+  expect(calls.at(-1).depth).toBe("detailed");
+  await page.locator("#back").click();
+  await page.locator(".book-open").click();
+  await expect(page.locator("#reader-loading")).toBeHidden();
+  await page.locator("#guide-toggle").click();
+  await expect(page.locator("#guide-status")).toContainText("已复用缓存");
+  await page.locator("#guide-read").click();
+  await expect(page.locator("#guide-status")).toContainText("已加载缓存");
+  expect(calls).toHaveLength(4);
 });

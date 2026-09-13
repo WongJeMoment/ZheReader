@@ -2910,3 +2910,24 @@ dialog > p {
   white-space: nowrap;
   padding: 4px 8px;
 }
+.paper-guide select {
+  width: 100%;
+  padding: 9px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.paper-guide .guide-prefetch-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.paper-guide #guide-prefetch {
+  width: auto;
+}
+#guide-prefetch-status {
+  color: var(--muted);
+  font-size: 12px;
+}

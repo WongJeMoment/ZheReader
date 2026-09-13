@@ -1,3 +1,4 @@
+import { extractPaperText } from "./paper-text";
 import { StudyBridge } from "./study-bridge";
 import { getSetting, putSetting } from "./storage";
 import { validateGuide } from "../shared/paper-guide";
@@ -7,7 +8,7 @@ export function createPaperGuide({ getBook, getReader, onOpen, notify }) {
   panel.id = "paper-guide";
   panel.className = "paper-guide";
   panel.hidden = true;
-  panel.innerHTML = `<div class="dialog-title"><h2>GPT 带读论文</h2><button id="guide-close" class="icon-button" aria-label="关闭论文带读">×</button></div><p>先补基础，再逐段读懂。每条讲解都有原文可核对。</p><button id="guide-account" class="text-button">账号与模型设置</button><label for="guide-background">你的基础与阅读目标</label><textarea id="guide-background" maxlength="1000" rows="2" placeholder="例如：熟悉 Python，不懂强化学习；想复现方法"></textarea><div class="guide-controls"><button id="guide-plan" class="primary">生成阅读准备</button><button id="guide-plan-view" class="text-button">查看已保存的准备</button><button id="guide-read" class="secondary">精读这一段</button><button id="guide-stop" class="text-button" hidden>停止</button></div><p id="guide-status" role="status"></p><p class="guide-note">阅读准备使用全文抽样，不代表已精读全文；逐段精读覆盖提取到的正文。图表、公式需结合原页核对。点击生成会将相应原文发送给 GPT，使用当前账号与模型的 Codex 额度。</p><div class="guide-navigation"><button id="guide-prev" class="secondary">上一段</button><span id="guide-position"></span><button id="guide-next" class="secondary">下一段</button></div><details><summary>当前原文</summary><p id="guide-source"></p><button id="guide-locate" class="text-button">打开对应原页</button></details><div id="guide-result"></div><form id="guide-question-form"><label for="guide-question">就这一段追问</label><input id="guide-question" maxlength="450" placeholder="例如：这个假设为什么必要？"><button class="secondary">继续讲解</button></form>`;
+  panel.innerHTML = `<div class="dialog-title"><h2>GPT 带读论文</h2><button id="guide-close" class="icon-button" aria-label="关闭论文带读">×</button></div><p>先补基础，再逐段读懂。每条讲解都有原文可核对。</p><button id="guide-account" class="text-button">账号与模型设置</button><label for="guide-background">你的基础与阅读目标</label><textarea id="guide-background" maxlength="1000" rows="2" placeholder="例如：熟悉 Python，不懂强化学习；想复现方法"></textarea><label for="guide-depth">讲解方式</label><select id="guide-depth"><option value="quick">快速带读 · 先看重点</option><option value="detailed">深入讲解 · 展开细节</option></select><label class="guide-prefetch-option"><input id="guide-prefetch" type="checkbox" checked>提前准备下一段（会使用账号额度）</label><p id="guide-prefetch-status" role="status"></p><div class="guide-controls"><button id="guide-plan" class="primary">生成阅读准备</button><button id="guide-plan-view" class="text-button">查看已保存的准备</button><button id="guide-read" class="secondary">精读这一段</button><button id="guide-regenerate" class="text-button">重新生成</button><button id="guide-stop" class="text-button" hidden>停止</button></div><p id="guide-status" role="status"></p><p class="guide-note">阅读准备使用全文抽样，不代表已精读全文；逐段精读覆盖提取到的正文。图表、公式需结合原页核对。点击生成会将相应原文发送给 GPT，使用当前账号与模型的 Codex 额度。</p><div class="guide-navigation"><button id="guide-prev" class="secondary">上一段</button><span id="guide-position"></span><button id="guide-next" class="secondary">下一段</button></div><details><summary>当前原文</summary><p id="guide-source"></p><button id="guide-locate" class="text-button">打开对应原页</button></details><div id="guide-result"></div><form id="guide-question-form"><label for="guide-question">就这一段追问</label><input id="guide-question" maxlength="450" placeholder="例如：这个假设为什么必要？"><button class="secondary">继续讲解</button></form>`;
   document.querySelector(".reader-body").append(panel);
   const $ = (id) => panel.querySelector("#" + id);
   let units = [],
@@ -16,7 +17,10 @@ export function createPaperGuide({ getBook, getReader, onOpen, notify }) {
     controller,
     generation = 0,
     bookId = "",
-    busy = false;
+    busy = false,
+    session = 0,
+    autoReading = false;
+  const tasks = new Map();
   const status = (t) => ($("guide-status").textContent = t);
   function controls() {
     for (const id of ["guide-plan", "guide-read", "guide-prev", "guide-next"])
@@ -26,6 +30,8 @@ export function createPaperGuide({ getBook, getReader, onOpen, notify }) {
     $("guide-question-form").querySelector("button").disabled =
       busy || !units.length;
     $("guide-plan-view").disabled = busy || !state.plan;
+    $("guide-depth").disabled = busy;
+    $("guide-regenerate").disabled = busy || !units.length;
     $("guide-background").disabled = busy;
     $("guide-stop").hidden = !busy;
   }
@@ -81,7 +87,11 @@ export function createPaperGuide({ getBook, getReader, onOpen, notify }) {
       : "";
     $("guide-source").textContent = units[index]?.text || "";
     const saved = state.results[units[index]?.id];
-    if (saved) {
+    if (
+      saved &&
+      (!saved._context ||
+        saved._context === requestKey("paper-read", [units[index]]))
+    ) {
       try {
         show(validateGuide(saved, JSON.stringify([units[index]])), [
           units[index],
@@ -97,6 +107,8 @@ export function createPaperGuide({ getBook, getReader, onOpen, notify }) {
       ...state,
       index,
       background: $("guide-background").value,
+      depth: $("guide-depth").value,
+      prefetch: $("guide-prefetch").checked,
     });
   }
   async function open() {
@@ -121,36 +133,29 @@ export function createPaperGuide({ getBook, getReader, onOpen, notify }) {
       if (token !== generation) return;
       state = saved?.results ? saved : { results: {} };
       $("guide-background").value = state.background || "";
-      let page = 0,
-        total = 0,
-        empty = 0;
-      for await (const section of reader.speechSections({
-        signal: controller.signal,
-      })) {
+      $("guide-depth").value = state.depth || "quick";
+      $("guide-prefetch").checked = state.prefetch !== false;
+      let extracted = await getSetting("paper-text:" + bookId);
+      if (token !== generation) return;
+      const reused =
+        extracted?.version === 1 &&
+        Array.isArray(extracted.units) &&
+        extracted.units.length;
+      if (!reused) {
+        extracted = await extractPaperText(
+          reader.pdf,
+          controller.signal,
+          (done, total) => {
+            if (token === generation)
+              status(`正在提取正文 ${done} / ${total} 页…`);
+          },
+        );
         if (token !== generation) return;
-        page++;
-        if (!section.text.trim()) {
-          empty++;
-          continue;
-        }
-        total += section.text.length;
-        if (total > 1500000)
-          throw new Error("论文正文超过当前带读上限，请拆分 PDF 后阅读。");
-        let remaining = section.text,
-          part = 0;
-        while (remaining) {
-          let end = Math.min(2800, remaining.length);
-          const boundary = remaining.lastIndexOf("\n", end);
-          if (boundary > 1400) end = boundary + 1;
-          units.push({
-            id: `p${page}-s${++part}`,
-            page,
-            text: remaining.slice(0, end),
-          });
-          remaining = remaining.slice(end);
-        }
-        status(`已提取 ${page} 页…`);
+        await putSetting("paper-text:" + bookId, extracted);
       }
+      if (token !== generation) return;
+      units = extracted.units;
+      const empty = extracted.empty;
       if (token !== generation) return;
       controller.signal.throwIfAborted();
       if (!units.length)
@@ -158,7 +163,7 @@ export function createPaperGuide({ getBook, getReader, onOpen, notify }) {
       index = Math.min(state.index || 0, units.length - 1);
       position();
       status(
-        `正文已就绪，共 ${units.length} 段。${empty ? `${empty} 页无文本，未纳入带读。` : ""}先生成阅读准备，或从当前段开始。`,
+        `正文已就绪${reused ? "（已复用缓存）" : ""}，共 ${units.length} 段。${empty ? `${empty} 页无文本，未纳入带读。` : ""}先生成阅读准备，或从当前段开始。`,
       );
       if (state.plan && !state.results[units[index].id]) {
         try {
@@ -186,64 +191,173 @@ export function createPaperGuide({ getBook, getReader, onOpen, notify }) {
     }
   }
   function overview() {
-    const count = Math.min(10, units.length),
+    const quick = $("guide-depth").value === "quick";
+    const count = Math.min(quick ? 6 : 10, units.length),
       result = [];
     for (let n = 0; n < count; n++) {
       const unit =
         units[Math.round((n * (units.length - 1)) / Math.max(1, count - 1))];
-      result.push({ ...unit, text: unit.text.slice(0, 600) });
+      result.push({ ...unit, text: unit.text.slice(0, quick ? 400 : 600) });
     }
     return result;
   }
-  async function run(action, question = "") {
+  function requestBody(action, sources, question = "") {
+    let model = "";
+    try {
+      model = localStorage.getItem("zr-study-model") || "";
+    } catch {}
+    return {
+      action,
+      text: JSON.stringify(sources),
+      question: [$("guide-background").value, question]
+        .filter(Boolean)
+        .join("\n"),
+      translation:
+        action === "paper-plan"
+          ? ""
+          : state.plan?.result.summary?.slice(0, 2000) || "",
+      model,
+      depth: $("guide-depth").value,
+    };
+  }
+  function requestKey(action, sources, question = "") {
+    return JSON.stringify(requestBody(action, sources, question));
+  }
+  function cached(action, sources, key) {
+    const value =
+      action === "paper-plan"
+        ? state.plan?.result
+        : state.results[sources[0].id];
+    if (value?._context !== key) return null;
+    try {
+      return validateGuide(value, JSON.stringify(sources));
+    } catch {
+      return null;
+    }
+  }
+  function startTask(action, sources, question = "") {
+    const key = requestKey(action, sources, question);
+    if (tasks.has(key)) return tasks.get(key);
+    const task = { controller: new AbortController(), key };
+    const startedSession = session;
+    task.promise = bridge
+      .request("study", {
+        signal: task.controller.signal,
+        body: requestBody(action, sources, question),
+      })
+      .then(async (result) => {
+        if (startedSession !== session || task.controller.signal.aborted)
+          throw new DOMException("已取消", "AbortError");
+        validateGuide(result, JSON.stringify(sources), action);
+        result._context = key;
+        if (action === "paper-plan") state.plan = { result, sources };
+        else if (!question) state.results[sources[0].id] = result;
+        await persist();
+        return result;
+      })
+      .finally(() => {
+        if (tasks.get(key) === task) tasks.delete(key);
+      });
+    tasks.set(key, task);
+    return task;
+  }
+  function prepareNext() {
+    if (
+      !$("guide-prefetch").checked ||
+      !autoReading ||
+      panel.hidden ||
+      index + 1 >= units.length
+    )
+      return;
+    const next = index + 1,
+      sources = [units[next]],
+      key = requestKey("paper-read", sources),
+      startedSession = session;
+    if (cached("paper-read", sources, key)) {
+      $("guide-prefetch-status").textContent = "下一段已准备好。";
+      return;
+    }
+    $("guide-prefetch-status").textContent = "正在提前准备下一段…";
+    startTask("paper-read", sources)
+      .promise.then(() => {
+        if (session === startedSession && index + 1 === next)
+          $("guide-prefetch-status").textContent = "下一段已准备好。";
+      })
+      .catch((e) => {
+        if (session === startedSession && index + 1 === next)
+          $("guide-prefetch-status").textContent =
+            e.name === "AbortError"
+              ? ""
+              : "下一段未能提前准备，可点击精读重试。";
+      });
+  }
+  async function run(action, question = "", force = false) {
     if (busy || !units.length) return;
+    if (action === "paper-read") autoReading = true;
+    const sources = action === "paper-plan" ? overview() : [units[index]],
+      key = requestKey(action, sources, question);
+    const saved = !force && !question && cached(action, sources, key);
+    if (saved) {
+      show(saved, sources);
+      status("已加载缓存，即时显示，未重复调用 GPT。");
+      if (action === "paper-read") prepareNext();
+      return;
+    }
+    if (force) {
+      tasks.get(key)?.controller.abort();
+      tasks.delete(key);
+    }
     busy = true;
-    controller = new AbortController();
     const token = ++generation;
     controls();
-    const sources = action === "paper-plan" ? overview() : [units[index]];
-    status(
-      action === "paper-plan"
-        ? `正在根据 ${sources.length} 个抽样片段制定准备路线…`
-        : "正在逐段解读并核对原文引用…",
-    );
-    try {
-      let model = "";
-      try {
-        model = localStorage.getItem("zr-study-model") || "";
-      } catch {}
-      const result = await bridge.request("study", {
-        signal: controller.signal,
-        body: {
-          action,
-          text: JSON.stringify(sources),
-          question: [$("guide-background").value, question]
-            .filter(Boolean)
-            .join("\n"),
-          translation: state.plan?.result.summary?.slice(0, 2000) || "",
-          model,
-        },
-      });
-      if (token !== generation) return;
-      validateGuide(result, JSON.stringify(sources));
-      if (action === "paper-plan") state.plan = { result, sources };
-      else state.results[units[index].id] = result;
-      show(result, sources);
-      await persist();
+    const alreadyRunning = tasks.has(key),
+      task = startTask(action, sources, question);
+    controller = task.controller;
+    let succeeded = false;
+    const started = Date.now();
+    const label = alreadyRunning
+      ? "正在接续已准备的任务"
+      : action === "paper-plan"
+        ? "正在生成阅读重点与先修知识"
+        : "正在解读并核对原文";
+    status(label + "…");
+    const timer = setInterval(() => {
       if (token === generation)
-        status("已完成，引用已核对。可点击页码对照原文；解读仍需自行判断。");
+        status(
+          `${label}… 已等待 ${Math.floor((Date.now() - started) / 1000)} 秒`,
+        );
+    }, 1000);
+    try {
+      const result = await task.promise;
+      if (token !== generation) return;
+      show(result, sources);
+      succeeded = true;
+      status("已完成，引用已核对。可选择深入讲解获取更多细节。");
     } catch (e) {
       if (token === generation)
         status(e.name === "AbortError" ? "已停止，可重新生成。" : e.message);
     } finally {
+      clearInterval(timer);
       if (token === generation) {
         busy = false;
         controls();
+        if (
+          succeeded &&
+          action === "paper-read" &&
+          !question &&
+          cached(action, sources, key)
+        )
+          prepareNext();
       }
     }
   }
   function reset(hide = true) {
     generation++;
+    session++;
+    for (const task of tasks.values()) task.controller.abort();
+    tasks.clear();
+    autoReading = false;
+    $("guide-prefetch-status").textContent = "";
     controller?.abort();
     busy = false;
     units = [];
@@ -259,6 +373,8 @@ export function createPaperGuide({ getBook, getReader, onOpen, notify }) {
   }
   $("guide-close").onclick = () => {
     panel.hidden = true;
+    for (const task of tasks.values())
+      if (task.controller !== controller) task.controller.abort();
   };
   $("guide-account").onclick = () =>
     document.querySelector(".account-open").click();
@@ -275,6 +391,18 @@ export function createPaperGuide({ getBook, getReader, onOpen, notify }) {
     }
   };
   $("guide-read").onclick = () => run("paper-read");
+  $("guide-regenerate").onclick = () => run("paper-read", "", true);
+  for (const id of ["guide-background", "guide-depth", "guide-prefetch"])
+    $(id).onchange = () => {
+      for (const [key, task] of tasks)
+        if (task.controller !== controller || !busy) {
+          task.controller.abort();
+          tasks.delete(key);
+        }
+      $("guide-prefetch-status").textContent = "";
+      position();
+      persist().catch((e) => status(e.message));
+    };
   $("guide-stop").onclick = () => controller?.abort();
   $("guide-locate").onclick = () => units[index] && locate(units[index]);
   for (const [id, delta] of [
@@ -284,6 +412,7 @@ export function createPaperGuide({ getBook, getReader, onOpen, notify }) {
     $(id).onclick = () => {
       index += delta;
       position();
+      if (autoReading) run("paper-read");
       persist().catch((e) => status(e.message));
     };
   $("guide-question-form").onsubmit = (e) => {
@@ -297,6 +426,8 @@ export function createPaperGuide({ getBook, getReader, onOpen, notify }) {
     reset,
     close() {
       panel.hidden = true;
+      for (const task of tasks.values())
+        if (task.controller !== controller) task.controller.abort();
     },
   };
 }
