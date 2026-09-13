@@ -10,6 +10,7 @@ export class StudyBridge {
       ["127.0.0.1", "localhost"].includes(location.hostname) &&
       injected.base === location.origin
     ) {
+      this.local = true;
       this.base = injected.base;
       this.token = injected.token;
     } else {
@@ -18,8 +19,16 @@ export class StudyBridge {
       } catch {}
     }
   }
-  async request(path, { signal, body, method = body ? "POST" : "GET" } = {}) {
-    if (!this.token) throw new Error("请先连接本机服务，再登录 ChatGPT 账号。");
+  async request(
+    path,
+    { signal, body, binary = false, method = body ? "POST" : "GET" } = {},
+  ) {
+    if (!this.local) {
+      try {
+        this.token = sessionStorage.getItem("zr-bridge-token") || this.token;
+      } catch {}
+    }
+    if (!this.token) throw new Error("请先连接本机服务。");
     for (let attempt = 0; attempt < 7; attempt++) {
       let response;
       try {
@@ -38,6 +47,13 @@ export class StudyBridge {
           "无法连接本机服务。请启动 npm run start，并允许浏览器访问本地网络。",
         );
       }
+      if (response.ok && binary)
+        return {
+          blob: await response.blob(),
+          name: decodeURIComponent(
+            response.headers.get("X-File-Name") || "paper.pdf",
+          ),
+        };
       const result = await response.json();
       if (response.status === 409 && path === "study" && attempt < 6) {
         await new Promise((resolve) => setTimeout(resolve, 500));

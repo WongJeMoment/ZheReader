@@ -3,6 +3,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { resolve, extname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Nutstore } from "./nutstore.mjs";
 import { CodexClient } from "./codex-client.mjs";
 const defaultDist = fileURLToPath(new URL("../dist/", import.meta.url));
 const hostedOrigin = "https://wongjemoment.github.io";
@@ -41,6 +42,7 @@ async function body(req) {
 }
 export function createBridge({
   client = new CodexClient(),
+  cloud = new Nutstore(),
   distDir = defaultDist,
   token = randomBytes(32).toString("hex"),
 } = {}) {
@@ -101,6 +103,52 @@ export function createBridge({
         return;
       }
       try {
+        if (url.pathname.startsWith("/api/cloud/")) {
+          const action = url.pathname.slice("/api/cloud/".length);
+          if (action === "status" && req.method === "GET") {
+            json(res, 200, cloud.status());
+            return;
+          }
+          if (req.method !== "POST") {
+            json(res, 405, { error: "不支持的操作" });
+            return;
+          }
+          const abort = new AbortController();
+          res.on("close", () => {
+            if (!res.writableEnded) abort.abort();
+          });
+          const input = await body(req);
+          if (!input || typeof input !== "object") {
+            json(res, 400, { error: "请求无效" });
+            return;
+          }
+          let result;
+          if (action === "connect")
+            result = await cloud.connect(input, abort.signal);
+          else if (action === "disconnect") result = cloud.disconnect();
+          else if (action === "list")
+            result = await cloud.list(input.path, abort.signal);
+          else if (action === "contents")
+            result = await cloud.contents(input.path, abort.signal);
+          else if (action === "file") {
+            result = await cloud.file(input.path, input.entry, abort.signal);
+            if (!res.destroyed) {
+              res.writeHead(200, {
+                "Content-Type": "application/octet-stream",
+                "Cache-Control": "no-store",
+                "X-File-Name": encodeURIComponent(result.name),
+                "Access-Control-Expose-Headers": "X-File-Name",
+              });
+              res.end(result.data);
+            }
+            return;
+          } else {
+            json(res, 404, { error: "未知坚果云功能" });
+            return;
+          }
+          if (!res.destroyed) json(res, 200, result);
+          return;
+        }
         if (url.pathname === "/api/account" && req.method === "GET") {
           json(res, 200, await client.account());
           return;
@@ -195,7 +243,7 @@ export function createBridge({
         "Cache-Control": "no-store",
       });
       res.end(
-        `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>连接 ZheReader</title><style>body{background:#f6f5f0;color:#303b32;font:16px/1.9 system-ui;max-width:460px;margin:12vh auto;padding:30px}h1{font-size:25px}button{background:#526b50;color:white;border:0;border-radius:8px;padding:14px 25px;font-size:16px;cursor:pointer}p{color:#6a7665}code{font-size:13px}</style><h1>连接你的阅读空间</h1><p>允许 ZheReader 网页使用这台电脑上的连接服务，进行账号登录、翻译和英语学习。账号凭据不会传给阅读网页。</p><p>网站：<code>${requested}</code></p><button id="connect">连接阅读网页</button><p id="status"></p><script nonce="${nonce}">document.getElementById('connect').onclick=()=>{if(!window.opener){document.getElementById('status').textContent='请从阅读网站点击“连接本机服务”打开此页。';return;}window.opener.postMessage({type:'zhereader:paired',token:${JSON.stringify(token)}},${JSON.stringify(requested)});document.getElementById('status').textContent='已连接，可以返回阅读网页。';window.close();};</script></html>`,
+        `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>连接 ZheReader</title><style>body{background:#f6f5f0;color:#303b32;font:16px/1.9 system-ui;max-width:460px;margin:12vh auto;padding:30px}h1{font-size:25px}button{background:#526b50;color:white;border:0;border-radius:8px;padding:14px 25px;font-size:16px;cursor:pointer}p{color:#6a7665}code{font-size:13px}</style><h1>连接你的阅读空间</h1><p>允许 ZheReader 网页使用这台电脑上的连接服务，进行账号登录、翻译、英语学习与坚果云附件导入。账号凭据不会传给阅读网页。</p><p>网站：<code>${requested}</code></p><button id="connect">连接阅读网页</button><p id="status"></p><script nonce="${nonce}">document.getElementById('connect').onclick=()=>{if(!window.opener){document.getElementById('status').textContent='请从阅读网站点击“连接本机服务”打开此页。';return;}window.opener.postMessage({type:'zhereader:paired',token:${JSON.stringify(token)}},${JSON.stringify(requested)});document.getElementById('status').textContent='已连接，可以返回阅读网页。';window.close();};</script></html>`,
       );
       return;
     }
@@ -235,7 +283,10 @@ export function createBridge({
       json(res, 404, { error: "页面未构建。请先运行 npm run build。" });
     }
   });
-  server.on("close", () => client.close());
+  server.on("close", () => {
+    client.close();
+    cloud.disconnect();
+  });
   return server;
 }
 if (

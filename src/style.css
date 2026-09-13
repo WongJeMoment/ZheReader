@@ -2493,3 +2493,138 @@ dialog > p {
 .model-custom-row button {
   flex-shrink: 0;
 }
+#cloud-dialog {
+  width: min(860px, calc(100vw - 64px));
+  max-width: 860px;
+}
+#cloud-dialog h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#cloud-dialog h2 svg {
+  width: 23px;
+}
+.cloud-connection,
+.cloud-toolbar,
+.cloud-footer,
+.cloud-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.cloud-connection {
+  padding: 14px 0 22px;
+}
+.cloud-connection span,
+.cloud-hint {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.8;
+}
+#cloud-settings {
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+#cloud-settings summary,
+.cloud-lookup summary {
+  cursor: pointer;
+  font-size: 14px;
+}
+#cloud-connect-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 20px;
+}
+#cloud-connect-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+.cloud-wide {
+  grid-column: 1/-1;
+}
+#cloud-dialog input:not([type="checkbox"]) {
+  padding: 11px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--text);
+  min-width: 0;
+}
+#cloud-dialog a {
+  color: var(--accent);
+  font-size: 12px;
+}
+.cloud-toolbar {
+  margin-top: 20px;
+}
+#cloud-search {
+  flex: 1;
+}
+#cloud-status {
+  font-size: 13px;
+  line-height: 1.8;
+}
+#cloud-warning {
+  color: #ac7449;
+}
+.cloud-files {
+  max-height: 340px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.cloud-file {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.cloud-file:last-child {
+  border-bottom: 0;
+}
+.cloud-file-name {
+  flex: 1;
+  min-width: 0;
+}
+.cloud-file strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.cloud-file small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.cloud-file button {
+  flex-shrink: 0;
+}
+.cloud-empty {
+  padding: 28px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.cloud-footer {
+  justify-content: space-between;
+  padding: 20px 0;
+}
+.cloud-footer label {
+  font-size: 12px;
+}
+#cloud-dialog input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+.cloud-lookup > div {
+  display: flex;
+  gap: 12px;
+}

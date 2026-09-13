@@ -32,10 +32,12 @@ import {
   Lightbulb,
   Sparkles,
   UserRound,
+  Cloud,
 } from "lucide";
 import { listBooks, getFile, putBook, removeBook } from "./storage";
 import { readPreference, savePreference, resolvedTheme } from "./theme";
 import "./style.css";
+import { createCloudPanel } from "./cloud-panel";
 import { createStudyPanel } from "./study-panel";
 import { createSpeechPanel } from "./speech-panel";
 const iconSet = {
@@ -71,6 +73,7 @@ const iconSet = {
   Lightbulb,
   Sparkles,
   UserRound,
+  Cloud,
 };
 const i = (name, cls = "") => `<i data-lucide="${name}" class="${cls}"></i>`;
 const esc = (s) =>
@@ -102,6 +105,7 @@ app.innerHTML = `
       <button class="nav-item selected" data-filter="all">${i("library")}<span>我的书架</span><span class="nav-count" id="all-count">0</span></button>
       <button class="nav-item" data-filter="recent">${i("clock-3")}<span>最近阅读</span></button>
       <button class="nav-item" data-filter="bookmarked">${i("bookmark")}<span>我的书签</span></button>
+      <button class="nav-item" id="cloud-open">${i("cloud")}<span>坚果云论文</span></button>
     </nav>
     <div class="sidebar-note"><div class="little-leaf">${i("leaf")}</div><p>把时间留给<br>值得读的文字。</p><span>A LITTLE LESS NOISE,<br>A LITTLE MORE READING.</span></div>
     <div class="sidebar-bottom"><span class="status-dot"></span>书籍仅保存在此浏览器<button class="icon-button" id="privacy" aria-label="查看存储说明">${i("monitor")}</button></div>
@@ -145,6 +149,7 @@ const speechUI = createSpeechPanel({
   refreshIcons: icons,
   notify: toast,
 });
+createCloudPanel({ icon: i, refreshIcons: icons, importFiles, notify: toast });
 const studyUI = createStudyPanel({
   icon: i,
   refreshIcons: icons,
@@ -336,7 +341,7 @@ document.addEventListener("drop", (e) => {
 async function importFiles(files) {
   if (importing) {
     toast("正在导入，请稍候");
-    return;
+    return { success: 0, failures: ["正在导入，请稍候"] };
   }
   importing = true;
   $("#import-top").disabled = true;
@@ -377,6 +382,7 @@ async function importFiles(files) {
           progress: 0,
           bookmarks: [],
           filename: file.name,
+          ...(file.cloudSource ? { cloudSource: file.cloudSource } : {}),
         };
         await putBook(book, data);
         books.push(book);
@@ -400,6 +406,7 @@ async function importFiles(files) {
       .filter(Boolean)
       .join("；") || "请选择 PDF 或 EPUB 文件",
   );
+  return { success, failures };
 }
 async function loadDemo() {
   try {
