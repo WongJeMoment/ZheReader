@@ -1,7 +1,10 @@
 export function bookTags(book) {
   return [
     ...new Set(
-      [...(book.tags || []), ...(book.zotero?.tags || [])]
+      (book.zotero
+        ? [...(book.zotero.collectionPaths || []), ...(book.zotero.tags || [])]
+        : book.tags || []
+      )
         .filter((tag) => typeof tag === "string" && tag.trim())
         .map((tag) => tag.trim()),
     ),
@@ -34,6 +37,8 @@ export function createTagFilter({ getBooks, renderBooks, saveBook, notify }) {
         throw new Error("最多 50 个标签，每个标签最多 100 字。");
       const book = getBooks().find((b) => b.id === editing);
       if (!book) throw new Error("这本书已被移除。");
+      if (book.zotero)
+        throw new Error("请在 Zotero 中修改分类和标签，然后刷新关联。");
       await saveBook({ ...book, tags });
       book.tags = tags;
       dialog.close();
@@ -47,7 +52,7 @@ export function createTagFilter({ getBooks, renderBooks, saveBook, notify }) {
   return {
     edit(id) {
       const book = getBooks().find((b) => b.id === id);
-      if (!book) return;
+      if (!book || book.zotero) return;
       editing = id;
       dialog.querySelector("#tags-book-title").textContent = book.title;
       dialog.querySelector("textarea").value = (book.tags || []).join("，");

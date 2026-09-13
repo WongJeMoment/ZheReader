@@ -284,43 +284,41 @@ test("existing version-one shelf survives annotation storage upgrade", async ({
   );
 });
 
-test("tag search uses Zotero tags and local tags survive refresh and reload", async ({
+test("Zotero classifications and tags drive search without local overrides", async ({
   page,
 }) => {
   await setup(page);
   await importPaper(page);
+  // A previously added local tag must not override Zotero once associated.
+  await page.locator("[data-tags]").click();
+  await page.locator("#local-tags").fill("本地旧标签");
+  await page.getByRole("button", { name: "保存标签", exact: true }).click();
   await connectZotero(page);
-  await page.locator("#search").fill("精读");
-  await expect(page.locator(".book-card")).toHaveCount(1);
-  await page.locator("#search").fill("Zotero Paper");
+  await expect(page.locator("[data-tags]")).toHaveCount(0);
+  for (const query of [
+    "机器学习",
+    "语言模型",
+    "机器学习 / 语言模型",
+    "待读",
+    "精读",
+  ]) {
+    await page.locator("#search").fill(query);
+    await expect(page.locator(".book-card")).toHaveCount(1);
+  }
+  await page.locator("#search").fill("本地旧标签");
   await expect(page.locator(".book-card")).toHaveCount(0);
   await page.locator("#search").fill("");
-  await page.locator("[data-tags]").click();
-  await page.locator("#local-tags").fill("待读，<b>测试</b>，待读");
-  await page.getByRole("button", { name: "保存标签", exact: true }).click();
   await page
     .locator("#tag-filter")
-    .getByRole("button", { name: "待读 · 1", exact: true })
+    .getByRole("button", { name: "机器学习 / 语言模型 · 1", exact: true })
     .click();
   await expect(page.locator(".book-card")).toHaveCount(1);
-  await expect(
-    page.locator(".book-tag").filter({ hasText: "<b>测试</b>" }),
-  ).toHaveText("<b>测试</b>");
-  await page
-    .locator("#tag-filter")
-    .getByRole("button", { name: "未添加标签 · 0", exact: true })
-    .click();
-  await expect(page.locator(".book-card")).toHaveCount(0);
   await page.reload();
-  await page.locator("#search").fill("待读");
+  await page.locator("#search").fill("语言模型");
   await expect(page.locator(".book-card")).toHaveCount(1);
-  await page.locator("#zotero-open").click();
-  await page.locator("#zotero-refresh").click();
-  await expect(page.locator("#zotero-status")).toContainText("已读取");
-  await page.locator("#zotero-close").click();
-  await expect(page.locator(".book-card")).toHaveCount(1);
+  await expect(page.locator("[data-tags]")).toHaveCount(0);
   await page.screenshot({
-    path: "test-results/tags-desktop.png",
+    path: "test-results/zotero-tags-desktop.png",
     fullPage: true,
   });
 });

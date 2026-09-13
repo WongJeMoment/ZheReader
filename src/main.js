@@ -287,10 +287,10 @@ function renderBooks() {
               .map((tag) => `<span class="book-tag">${esc(tag)}</span>`)
               .join(
                 "",
-              )}<button class="edit-tags" data-tags="${esc(b.id)}">编辑标签</button></div><button class="remove-book icon-button" data-delete="${esc(b.id)}" aria-label="移除 ${esc(b.title)}">${i("trash-2")}</button></article>`,
+              )}${b.zotero ? `<span class="tag-source">来自 Zotero</span>` : `<button class="edit-tags" data-tags="${esc(b.id)}">编辑标签</button>`}</div><button class="remove-book icon-button" data-delete="${esc(b.id)}" aria-label="移除 ${esc(b.title)}">${i("trash-2")}</button></article>`,
         )
         .join("")
-    : `<div class="empty-state">${i(query ? "search" : filter === "bookmarked" ? "bookmark" : "book-open")}<h3>${query ? "还没有找到这本书" : filter === "bookmarked" ? "把喜欢的地方，留个记号" : filter === "recent" ? "下一页，从这里开始" : format !== "all" ? `还没有 ${format.toUpperCase()} 书籍` : "你的书架，等一本好书"}</h3><p>${query ? "试试其他标签，或点击“编辑标签”为书籍添加标签。" : filter === "bookmarked" ? "阅读时点击书签图标，即可收藏当前页。" : filter === "recent" ? "打开一本书后，阅读记录会出现在这里。" : "导入自己的藏书，或先探索上方的阅读体验。"}</p></div>`;
+    : `<div class="empty-state">${i(query ? "search" : filter === "bookmarked" ? "bookmark" : "book-open")}<h3>${query ? "还没有找到这本书" : filter === "bookmarked" ? "把喜欢的地方，留个记号" : filter === "recent" ? "下一页，从这里开始" : format !== "all" ? `还没有 ${format.toUpperCase()} 书籍` : "你的书架，等一本好书"}</h3><p>${query ? "试试 Zotero 分类名称或标签；修改后请刷新分类与关联。" : filter === "bookmarked" ? "阅读时点击书签图标，即可收藏当前页。" : filter === "recent" ? "打开一本书后，阅读记录会出现在这里。" : "导入自己的藏书，或先探索上方的阅读体验。"}</p></div>`;
   document
     .querySelectorAll("[data-open]")
     .forEach((b) => (b.onclick = () => openBook(b.dataset.open)));

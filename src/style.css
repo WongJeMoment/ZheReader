@@ -2831,3 +2831,7 @@ dialog > p {
   border-radius: 8px;
   font: inherit;
 }
+.tag-source {
+  color: var(--muted);
+  font-size: 11px;
+}
