@@ -1,3 +1,4 @@
+import { TaskQueue } from "./task-queue.mjs";
 import {
   guideSchema,
   guidePrompt,
@@ -28,6 +29,7 @@ export class CodexClient {
     this.nextId = 1;
     this.busy = false;
     this.activeStudies = 0;
+    this.studyQueue = new TaskQueue(4);
   }
   async ensureStarted() {
     if (!this.starting)
@@ -215,10 +217,7 @@ export class CodexClient {
     return this.rpc("account/rateLimits/read");
   }
   async study(input, signal) {
-    if (this.activeStudies >= 4)
-      throw Object.assign(new Error("已有 4 个学习任务在运行，请稍后重试。"), {
-        status: 409,
-      });
+    const release = await this.studyQueue.acquire(signal);
     this.activeStudies++;
     this.busy = true;
     let threadId, turnId, listener, timer, onAbort;
@@ -339,6 +338,7 @@ export class CodexClient {
         );
       this.activeStudies--;
       this.busy = this.activeStudies > 0;
+      release();
     }
   }
   close() {

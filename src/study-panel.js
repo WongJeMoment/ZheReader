@@ -145,7 +145,7 @@ export function createStudyPanel({ icon, refreshIcons, notify, speechUI }) {
       });
       return;
     }
-    setTranslationStatus("正在翻译…");
+    setTranslationStatus("正在翻译…任务繁忙时会自动等待，无需重试。");
     try {
       const cacheKey = key("translate");
       let result = cache.get(cacheKey);

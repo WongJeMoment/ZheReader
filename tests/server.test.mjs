@@ -245,12 +245,15 @@ test("Codex protocol uses isolated ChatGPT auth, constrained ephemeral turns, sc
     "你好",
   );
   await client.study({ action: "research", text: "Hello" });
-  const concurrent = await Promise.all([
-    client.study({ action: "translate", text: "Parallel translation" }),
-    client.study({ action: "analyze", text: "Parallel analysis" }),
-    client.study({ action: "research", text: "Parallel research" }),
-  ]);
-  assert.equal(concurrent.length, 3);
+  const concurrent = await Promise.all(
+    Array.from({ length: 8 }, (_, i) =>
+      client.study({
+        action: ["translate", "analyze", "research"][i % 3],
+        text: `Queued request ${i}`,
+      }),
+    ),
+  );
+  assert.equal(concurrent.length, 8);
   assert.equal(client.activeStudies, 0);
 
   const threads = requests.filter((r) => r.method === "thread/start");
