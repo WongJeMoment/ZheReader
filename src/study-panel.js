@@ -35,7 +35,7 @@ export function createStudyPanel({ icon, refreshIcons, notify, speechUI }) {
   document.querySelector(".reader-body").append(panel);
   const dialog = document.createElement("dialog");
   dialog.id = "account-dialog";
-  dialog.innerHTML = `<div class="dialog-title"><h2>连接你的 GPT 阅读助手</h2><button id="account-close" class="icon-button" aria-label="关闭账号设置">${icon("x")}</button></div><p>通过 ChatGPT 官方登录，使用账号的 Codex 额度。无需 API Key。</p><div class="account-step"><span class="step-number">1</span><div><h3>连接这台电脑</h3><p>首次使用在项目目录运行 <code>npm run start</code>，并保持终端开启。</p><button id="bridge-connect" class="secondary">连接本机服务 ${icon("arrow-up-right")}</button><a class="account-local-link" href="http://127.0.0.1:4318/" target="_blank" rel="noopener noreferrer">打开本机阅读器</a></div></div><div class="account-step"><span class="step-number">2</span><div><h3>登录 ChatGPT 账号</h3><p id="account-status" role="status">连接后即可登录。</p><div class="account-buttons"><button id="account-login" class="primary" disabled>登录 ChatGPT ${icon("arrow-up-right")}</button><button id="account-refresh" class="secondary" disabled>刷新状态</button><button id="account-logout" class="text-button" hidden>退出账号</button></div><a id="account-login-link" hidden target="_blank" rel="noopener noreferrer">打开官方登录页面</a></div></div><div class="account-preferences"><label for="study-model">使用模型</label><select id="study-model"><option value="">账号默认模型</option></select><label class="auto-translate-option"><input id="study-auto" type="checkbox"> 划词后自动翻译</label><p id="account-usage"></p><p>每次翻译或解析会使用 Codex 额度；本页会复用相同选区的结果。只有“进一步搜索”会联网检索。选中文字会发送给 OpenAI，整本书不会自动上传。</p></div><p id="account-error" class="account-error" role="status"></p>`;
+  dialog.innerHTML = `<div class="dialog-title"><h2>连接你的 GPT 阅读助手</h2><button id="account-close" class="icon-button" aria-label="关闭账号设置">${icon("x")}</button></div><p>通过 ChatGPT 官方登录，使用账号的 Codex 额度。无需 API Key。</p><div class="account-step"><span class="step-number">1</span><div><h3>连接这台电脑</h3><p>首次使用在项目目录运行 <code>npm run start</code>，并保持终端开启。</p><button id="bridge-connect" class="secondary">连接本机服务 ${icon("arrow-up-right")}</button><a class="account-local-link" href="http://127.0.0.1:4318/" target="_blank" rel="noopener noreferrer">打开本机阅读器</a></div></div><div class="account-step"><span class="step-number">2</span><div><h3>登录 ChatGPT 账号</h3><p id="account-status" role="status">连接后即可登录。</p><div class="account-buttons"><button id="account-login" class="primary" disabled>登录 ChatGPT ${icon("arrow-up-right")}</button><button id="account-refresh" class="secondary" disabled>刷新状态</button><button id="account-logout" class="text-button" hidden>退出账号</button></div><a id="account-login-link" hidden target="_blank" rel="noopener noreferrer">打开官方登录页面</a></div></div><div class="account-preferences"><div class="model-heading"><label for="study-model">使用模型</label><button id="study-model-refresh" class="text-button" type="button">刷新模型</button></div><input id="study-model-search" type="search" placeholder="搜索模型名称或 ID" aria-label="搜索模型"><select id="study-model"><option value="">账号默认模型</option></select><p id="study-model-note" role="status"></p><p id="study-model-status" role="status"></p><details class="model-custom"><summary>手动指定模型</summary><p>填写完整模型 ID，用于目录尚未列出的模型。能否使用取决于账号和 Codex 支持范围；不支持时会显示错误。</p><div class="model-custom-row"><input id="study-model-custom" maxlength="128" placeholder="完整模型 ID" aria-label="自定义模型 ID"><button id="study-model-apply" class="secondary" type="button">使用</button></div></details><label class="auto-translate-option"><input id="study-auto" type="checkbox"> 划词后自动翻译</label><p id="account-usage"></p><p>每次翻译或解析会使用 Codex 额度；本页会复用相同选区的结果。只有“进一步搜索”会联网检索。选中文字会发送给 OpenAI，整本书不会自动上传。</p></div><p id="account-error" class="account-error" role="status"></p>`;
   document.body.append(dialog);
   let text = "",
     translation = "",
@@ -50,6 +50,7 @@ export function createStudyPanel({ icon, refreshIcons, notify, speechUI }) {
     ready = false;
   let auto = readPreference("zr-auto-translate", "true") !== "false";
   let model = readPreference("zr-study-model", "");
+  let modelCatalog = [];
   const cache = new Map();
   const accountButtons = () => document.querySelectorAll(".account-open");
   function setCache(key, value) {
@@ -337,19 +338,10 @@ export function createStudyPanel({ icon, refreshIcons, notify, speechUI }) {
       if (account.loggedIn) {
         clearInterval(loginPoll);
         $("account-login-link").hidden = true;
-        const [{ models }, limits] = await Promise.all([
-          bridge.request("models").catch(() => ({ models: [] })),
+        const [, limits] = await Promise.all([
+          refreshModels(),
           bridge.request("limits").catch(() => null),
         ]);
-        $("study-model").replaceChildren(
-          new Option("账号默认模型", ""),
-          ...models.map((m) => new Option(m.name, m.id)),
-        );
-        if (models.some((m) => m.id === model)) $("study-model").value = model;
-        else {
-          model = "";
-          savePreference("zr-study-model", "");
-        }
         const used = limits?.rateLimits?.primary?.usedPercent;
         $("account-usage").textContent =
           typeof used === "number"
@@ -427,18 +419,77 @@ export function createStudyPanel({ icon, refreshIcons, notify, speechUI }) {
       $("account-error").textContent = error.message;
     }
   };
-  $("study-model").onchange = (e) => {
+  function renderModels() {
+    const query = $("study-model-search").value.trim().toLowerCase();
+    $("study-model").replaceChildren(new Option("账号默认模型", ""));
+    for (const [hidden, label] of [
+      [false, "常用模型"],
+      [true, "更多模型 · 默认隐藏"],
+    ]) {
+      const group = document.createElement("optgroup");
+      group.label = label;
+      for (const m of modelCatalog.filter(
+        (m) =>
+          Boolean(m.hidden) === hidden &&
+          (m.id === model || `${m.name} ${m.id}`.toLowerCase().includes(query)),
+      )) {
+        group.append(
+          new Option(`${m.name || m.id}${m.isDefault ? " · 默认" : ""}`, m.id),
+        );
+      }
+      if (group.children.length) $("study-model").append(group);
+    }
+    if (model && !modelCatalog.some((m) => m.id === model))
+      $("study-model").append(new Option(`${model} · 手动指定`, model));
+    $("study-model").value = model;
+    const selected = modelCatalog.find((m) => m.id === model);
+    $("study-model-note").textContent = selected
+      ? `${selected.description || selected.id}${selected.hidden ? " · 默认隐藏，可能用途有限或不支持当前任务。" : ""}`
+      : model
+        ? "手动指定的模型；可用性将在请求时确认，不会自动替换为其他模型。"
+        : "使用账号默认模型。列表来自 Codex，包含默认隐藏条目。";
+  }
+  async function refreshModels() {
+    $("study-model-refresh").disabled = true;
+    $("study-model-status").textContent = "正在获取完整模型列表…";
+    try {
+      const { models } = await bridge.request("models");
+      modelCatalog = models;
+      renderModels();
+      $("study-model-status").textContent =
+        `共 ${models.length} 个模型（含 ${models.filter((m) => m.hidden).length} 个默认隐藏条目）。实际可用性以账号为准。`;
+    } catch (error) {
+      $("study-model-status").textContent =
+        `模型列表刷新失败：${error.message} 已保留当前选择。`;
+    } finally {
+      $("study-model-refresh").disabled = false;
+    }
+  }
+  function chooseModel(value) {
+    if (value && !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(value)) {
+      $("study-model-status").textContent =
+        "请输入有效的完整模型 ID（字母、数字、点、短横线、下划线或冒号）。";
+      return;
+    }
     version++;
     stopRequests();
     translation = "";
     panel.hidden = true;
-    model = e.target.value;
+    $("study-toggle").setAttribute("aria-expanded", "false");
+    model = value;
     savePreference("zr-study-model", model);
+    renderModels();
     if (text) {
       card.hidden = false;
       translate();
     }
-  };
+  }
+  $("study-model").onchange = (e) => chooseModel(e.target.value);
+  $("study-model-search").oninput = renderModels;
+  $("study-model-refresh").onclick = refreshModels;
+  $("study-model-apply").onclick = () =>
+    chooseModel($("study-model-custom").value.trim());
+  renderModels();
   $("study-auto").checked = auto;
   $("study-auto").onchange = (e) => {
     auto = e.target.checked;

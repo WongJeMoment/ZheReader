@@ -119,6 +119,8 @@ export function createBridge({
               id: m.model,
               name: m.displayName,
               isDefault: m.isDefault,
+              hidden: Boolean(m.hidden),
+              description: m.description || "",
             })),
           });
           return;

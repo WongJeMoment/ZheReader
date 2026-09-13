@@ -2462,3 +2462,34 @@ dialog > p {
     max-width: 90vw;
   }
 }
+.model-heading,
+.model-custom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.model-heading label {
+  font-size: 13px;
+}
+#study-model-search,
+#study-model-custom {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+#study-model-search {
+  margin: 10px 0;
+}
+.model-custom summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+.model-custom-row button {
+  flex-shrink: 0;
+}

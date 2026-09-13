@@ -255,6 +255,20 @@ test("Codex protocol uses isolated ChatGPT auth, constrained ephemeral turns, sc
     requests.find((r) => r.method === "turn/start").params.outputSchema,
   );
   assert.equal(client.busy, false);
+  const custom = await client.study({
+    action: "translate",
+    text: "Hi",
+    model: "custom-model",
+  });
+  assert.equal(custom.model, "custom-model");
+  assert.equal(
+    requests.filter((r) => r.method === "thread/start").at(-1).params.model,
+    "custom-model",
+  );
+  await assert.rejects(
+    client.study({ action: "translate", text: "Hi", model: "invalid model" }),
+    /格式无效/,
+  );
   accountType = "apiKey";
   assert.equal((await client.account()).loggedIn, false);
   await assert.rejects(
@@ -323,4 +337,28 @@ test("disconnecting a browser cancels the in-flight model request", async (t) =>
   abort.abort();
   await stopped;
   assert.equal((await response).name, "AbortError");
+});
+
+test("model catalog includes hidden entries, follows pagination and deduplicates", async () => {
+  const client = new CodexClient();
+  client.ensureStarted = async () => {};
+  const calls = [];
+  client.rpc = async (method, params) => {
+    calls.push({ method, params });
+    return params.cursor
+      ? {
+          data: [{ model: "visible" }, { model: "extra", hidden: true }],
+          nextCursor: null,
+        }
+      : { data: [{ model: "visible" }], nextCursor: "page2" };
+  };
+  assert.deepEqual(
+    (await client.models()).map((m) => m.model),
+    ["visible", "extra"],
+  );
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].params.cursor, "page2");
+  assert.ok(calls.every((c) => c.params.includeHidden === true));
+  client.rpc = async () => ({ data: [], nextCursor: "loop" });
+  await assert.rejects(client.models(), /分页异常/);
 });

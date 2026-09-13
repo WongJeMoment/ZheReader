@@ -55,13 +55,11 @@ async function setup(page, { loggedIn = true, delay = 0 } = {}) {
 }
 async function openPdf(page) {
   await page.goto("/");
-  await page
-    .locator("#file-input")
-    .setInputFiles({
-      name: "Study.pdf",
-      mimeType: "application/pdf",
-      buffer: samplePdf(),
-    });
+  await page.locator("#file-input").setInputFiles({
+    name: "Study.pdf",
+    mimeType: "application/pdf",
+    buffer: samplePdf(),
+  });
   await page.getByRole("button", { name: "阅读 Study", exact: true }).click();
   await expect(page.locator("#reader-loading")).toBeHidden();
 }
@@ -189,4 +187,62 @@ test("automatic translation can be disabled and model text is rendered safely", 
   );
   await expect(page.locator("#study-content img")).toHaveCount(0);
   await expect(page.locator(".study-sources a")).toHaveCount(0);
+});
+
+test("expanded model picker searches hidden models, preserves selection on failure and passes custom IDs", async ({
+  page,
+}) => {
+  const calls = await setup(page);
+  await page.route("**/api/models", (route) =>
+    route.fulfill({
+      json: {
+        models: [
+          {
+            id: "test-model",
+            name: "Test GPT",
+            isDefault: true,
+            hidden: false,
+          },
+          {
+            id: "extra-model",
+            name: "Extra GPT",
+            hidden: true,
+            description: "Additional model",
+          },
+        ],
+      },
+    }),
+  );
+  await openPdf(page);
+  await page.locator("#reader-view .account-open").click();
+  await expect(page.locator("#study-model-status")).toContainText(
+    "共 2 个模型",
+  );
+  await expect(
+    page.locator('#study-model optgroup[label="更多模型 · 默认隐藏"] option'),
+  ).toHaveCount(1);
+  await page.locator("#study-model-search").fill("extra");
+  await expect(
+    page.locator('#study-model option[value="test-model"]'),
+  ).toHaveCount(0);
+  await page.locator("#study-model").selectOption("extra-model");
+  await expect(page.locator("#study-model-note")).toContainText("用途有限");
+  await page.route("**/api/models", (route) =>
+    route.fulfill({ status: 502, json: { error: "测试连接失败" } }),
+  );
+  await page.locator("#study-model-refresh").click();
+  await expect(page.locator("#study-model-status")).toContainText(
+    "已保留当前选择",
+  );
+  await expect(page.locator("#study-model")).toHaveValue("extra-model");
+  await page.locator(".model-custom summary").click();
+  await page.locator("#study-model-custom").fill("custom-model");
+  await page.locator("#study-model-apply").click();
+  await expect(page.locator("#study-model")).toHaveValue("custom-model");
+  await page.locator("#account-close").click();
+  await select(page.locator("#pdf-text span").first());
+  await expect.poll(() => calls.at(-1)?.model).toBe("custom-model");
+  await page.reload();
+  await page.locator(".account-open").first().click();
+  await expect(page.locator("#study-model")).toHaveValue("custom-model");
 });
