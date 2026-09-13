@@ -13,7 +13,7 @@ import { homedir } from "node:os";
 import {
   buildPrompt,
   tutorInstructions,
-  resultSchema,
+  resultSchemaFor,
   validateResult,
 } from "./prompts.mjs";
 
@@ -341,7 +341,7 @@ export class CodexClient {
         ],
         outputSchema: input.action.startsWith("paper-")
           ? guideSchemaFor(input.action, input.depth)
-          : resultSchema,
+          : resultSchemaFor(input.action),
         ...(effort ? { effort } : {}),
       });
       turnId = started.turn.id;
@@ -350,7 +350,7 @@ export class CodexClient {
       finished = true;
       const result = input.action.startsWith("paper-")
         ? validateGuide(JSON.parse(finalText), input.text, input.action)
-        : validateResult(JSON.parse(finalText));
+        : validateResult(JSON.parse(finalText), input.action);
       return { ...result, model: model.model, searched };
     } finally {
       clearTimeout(timer);

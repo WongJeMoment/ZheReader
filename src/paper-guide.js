@@ -1,7 +1,7 @@
 import { extractPaperText } from "./paper-text";
 import { StudyBridge } from "./study-bridge";
 import { getSetting, putSetting } from "./storage";
-import { validateGuide } from "../shared/paper-guide";
+import { validateGuide, GUIDE_PROMPT_VERSION } from "../shared/paper-guide";
 export function createPaperGuide({ getBook, getReader, onOpen, notify }) {
   const bridge = new StudyBridge();
   const panel = document.createElement("aside");
@@ -221,7 +221,7 @@ export function createPaperGuide({ getBook, getReader, onOpen, notify }) {
     };
   }
   function requestKey(action, sources, question = "") {
-    return JSON.stringify(requestBody(action, sources, question));
+    return JSON.stringify([GUIDE_PROMPT_VERSION, requestBody(action, sources, question)]);
   }
   function cached(action, sources, key) {
     const value =
