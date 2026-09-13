@@ -156,7 +156,7 @@ test("PDF entire document, pause, resume, completion and current page", async ({
   await expect(page.locator("#speech-location")).toContainText("第 2 / 2 页");
   await page.evaluate(() => __speech.finish());
   await expect(page.locator("#speech-state")).toHaveText("本次朗读已完成");
-  await page.locator("#next-page").click();
+  await page.keyboard.press("ArrowRight");
   await expect(page.locator("#page-number")).toHaveValue("2");
   await page.locator("#speech-current").click();
   await expect.poll(() => page.evaluate(() => __speech.calls.length)).toBe(3);

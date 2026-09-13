@@ -1,11 +1,15 @@
-export function samplePdf() {
+export function samplePdf(pageTexts = ["Hello ZheReader", "The second page"]) {
+  const count = pageTexts.length,
+    fontId = 3 + count;
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 500] /Resources << /Font << /F1 5 0 R >> >> /Contents 6 0 R >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 500] /Resources << /Font << /F1 5 0 R >> >> /Contents 7 0 R >>",
+    `<< /Type /Pages /Kids [${pageTexts.map((_, i) => `${3 + i} 0 R`).join(" ")}] /Count ${count} >>`,
+    ...pageTexts.map(
+      (_, i) =>
+        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 500] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${fontId + 1 + i} 0 R >>`,
+    ),
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    ...["Hello ZheReader", "The second page"].map((s) => {
+    ...pageTexts.map((s) => {
       const stream = `BT /F1 22 Tf 40 400 Td (${s}) Tj ET`;
       return `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
     }),
@@ -17,9 +21,11 @@ export function samplePdf() {
     data += `${index + 1} 0 obj\n${obj}\nendobj\n`;
   });
   const xref = Buffer.byteLength(data);
-  data += `xref\n0 8\n0000000000 65535 f \n${offsets
+  data += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets
     .slice(1)
     .map((o) => `${String(o).padStart(10, "0")} 00000 n \n`)
-    .join("")}trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+    .join(
+      "",
+    )}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
   return Buffer.from(data);
 }

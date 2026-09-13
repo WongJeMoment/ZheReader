@@ -133,7 +133,7 @@ app.innerHTML = `
 <section id="reader-view" class="reader-view" hidden aria-label="阅读器">
   <header class="reader-header"><button class="secondary" id="back">${i("chevron-left")}<span>书架</span></button><div class="reader-heading"><strong id="reader-title"></strong><span id="reader-subtitle"></span></div><div class="reader-actions"><button class="secondary" id="guide-toggle">GPT 带读</button><button class="icon-button account-open" aria-label="GPT 账号">${i("user-round")}</button><button class="icon-button" id="annotation-toggle" aria-label="论文标注" aria-expanded="false">${i("highlighter")}</button><button class="icon-button" id="study-toggle" aria-label="英语学习助手" aria-expanded="false">${i("languages")}</button><button class="secondary speech-toggle" id="speech-toggle" aria-label="语音朗读" aria-expanded="false" aria-controls="speech-panel">${i("headphones")}<span>听书</span></button><button class="icon-button" id="toc-toggle" aria-label="目录与书签">${i("list")}</button><button class="icon-button" id="add-bookmark" aria-label="添加书签">${i("bookmark")}</button><button class="icon-button theme-open" aria-label="主题设置">${i("sun")}</button><button class="icon-button" id="fullscreen" aria-label="全屏阅读">${i("maximize")}</button></div></header>
   <div class="reader-body"><aside id="toc-panel" class="toc-panel" hidden><div class="toc-header"><h3>目录与书签</h3><button class="icon-button" id="toc-close" aria-label="关闭目录">${i("x")}</button></div><div class="toc-tabs"><button class="active" id="chapters-tab">目录</button><button id="bookmarks-tab">书签</button></div><div id="toc-list"></div></aside><div class="reading-stage" id="reading-stage"><div id="reader-loading" class="reader-loading">正在打开书籍…</div><div id="pdf-container"><div class="pdf-page" id="pdf-page"><canvas id="pdf-canvas"></canvas><div id="pdf-annotations"></div><div id="pdf-text" class="textLayer"></div></div></div><div id="epub-container"></div></div></div>
-  <footer class="reader-footer"><span class="reader-progress" id="reader-progress">准备阅读</span><div class="page-controls"><button class="icon-button" id="prev-page" aria-label="上一页">${i("chevron-left")}</button><label id="pdf-jump"><input id="page-number" type="number" min="1" aria-label="跳转页码"><span id="page-total"></span></label><span id="epub-position" hidden></span><button class="icon-button" id="next-page" aria-label="下一页">${i("chevron-right")}</button></div><div class="size-controls"><button class="icon-button" id="size-down" aria-label="缩小字号或页面">${i("minus")}</button><span id="size-label">100%</span><button id="pdf-zoom-reset" class="text-button" title="恢复 PDF 缩放至 100%">复位</button><button class="icon-button" id="size-up" aria-label="放大字号或页面">${i("plus")}</button></div></footer>
+  <footer class="reader-footer"><span class="reader-progress" id="reader-progress">准备阅读</span><div class="page-controls"><label id="pdf-jump"><input id="page-number" type="number" min="1" aria-label="跳转页码"><span id="page-total"></span></label><span id="epub-position" hidden></span></div><div class="size-controls"><button class="icon-button" id="size-down" aria-label="缩小字号或页面">${i("minus")}</button><span id="size-label">100%</span><button id="pdf-zoom-reset" class="text-button" title="恢复 PDF 缩放至 100%">复位</button><button class="icon-button" id="size-up" aria-label="放大字号或页面">${i("plus")}</button></div></footer>
 </section>
 <dialog id="theme-dialog"><div class="dialog-title"><h2>让眼睛，也放松一下</h2><button class="icon-button" data-close="theme-dialog" aria-label="关闭主题设置">${i("x")}</button></div><p>选择适合此刻的阅读氛围。</p><div class="theme-options"><button data-theme-mode="auto">${i("monitor")}<strong>跟随时间</strong><span>昼夜自动切换</span></button><button data-theme-mode="light">${i("sun")}<strong>暖纸浅色</strong><span>柔和米白 · 鼠尾草绿</span></button><button data-theme-mode="dark">${i("moon")}<strong>静夜深色</strong><span>低亮度 · 柔和文字</span></button></div><div class="theme-schedule">${i("clock-3")} 自动模式：20:00–次日 07:00 使用深色，其余时间使用浅色。按设备本地时间切换。</div></dialog>
 <dialog id="info-dialog"><div class="dialog-title"><h2>属于你的本地书架</h2><button class="icon-button" data-close="info-dialog" aria-label="关闭存储说明">${i("x")}</button></div><p>导入的书籍、进度和书签保存在当前浏览器中，不会自动上传整本书，也不会同步到其他设备。使用 GPT 翻译、解析或搜索时，选中的文字及追问会发送给 OpenAI。</p><p>请保留原始文件。清除网站数据、使用隐私浏览或更换浏览器后，本地书架可能丢失。支持未加密的 EPUB；PDF 可在打开时输入密码。</p></dialog>
@@ -561,8 +561,6 @@ async function openBook(id) {
           $("#page-total").textContent = `/ ${current.pages}`;
           $("#page-number").max = current.pages;
         }
-        $("#prev-page").disabled = reader?.atStart ?? false;
-        $("#next-page").disabled = reader?.atEnd ?? false;
         updateBookmarkButton();
         try {
           await putBook({ ...current });
@@ -620,8 +618,6 @@ function navigate(direction) {
   studyUI.reset();
   reader?.turn(direction).catch((e) => toast(e.message || "翻页失败"));
 }
-$("#prev-page").onclick = () => navigate(-1);
-$("#next-page").onclick = () => navigate(1);
 $("#page-number").onchange = (e) => {
   speechUI.selection("");
   studyUI.reset();

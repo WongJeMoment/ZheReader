@@ -82,17 +82,17 @@ test("PDF rendering, text selection layer, pagination, bookmark and persistence"
     .click();
   await expect(page.locator("#reader-loading")).toBeHidden({ timeout: 20000 });
   await expect(page.locator("#pdf-text")).toContainText("Hello ZheReader");
-  await page.getByRole("button", { name: "下一页", exact: true }).click();
+  await page.keyboard.press("ArrowRight");
   await expect(page.locator("#page-number")).toHaveValue("2");
   await expect(page.locator("#pdf-text")).toContainText("The second page");
-  await expect(page.locator("#next-page")).toBeDisabled();
+  await expect(page.locator("#next-page")).toHaveCount(0);
   await page.getByRole("button", { name: "添加书签", exact: true }).click();
   await page.locator("#back").click();
   await page.reload();
   await page.getByRole("button", { name: "继续阅读" }).click();
   await expect(page.locator("#reader-loading")).toBeHidden();
   await expect(page.locator("#page-number")).toHaveValue("2");
-  await page.getByRole("button", { name: "上一页", exact: true }).click();
+  await page.keyboard.press("ArrowLeft");
   await expect(page.locator("#page-number")).toHaveValue("1");
   await page.locator("#back").click();
   await page
@@ -144,4 +144,54 @@ test("broken EPUB does not block further imports", async ({ page }) => {
   await expect(page.locator("#import-top")).toBeEnabled();
   await page.locator("#file-input").setInputFiles(epubPath);
   await expect(page.locator(".book-card")).toHaveCount(1);
+});
+
+test("PDF wheel scrolls through continuous pages, releases distant canvases and restores location", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+  await page
+    .locator("#file-input")
+    .setInputFiles({
+      name: "Continuous.pdf",
+      mimeType: "application/pdf",
+      buffer: samplePdf(
+        Array.from({ length: 10 }, (_, i) => `Continuous page ${i + 1}`),
+      ),
+    });
+  await page.locator(".book-open").click();
+  await expect(page.locator("#reader-loading")).toBeHidden();
+  await expect(page.locator("[data-pdf-page]")).toHaveCount(10);
+  await expect(page.locator("#next-page,#prev-page")).toHaveCount(0);
+  const bounds = await page.locator("#pdf-container").boundingBox();
+  await page.mouse.move(
+    bounds.x + bounds.width / 2,
+    bounds.y + bounds.height / 2,
+  );
+  await page.mouse.wheel(0, 1250);
+  await expect(page.locator("#page-number")).toHaveValue("2");
+  await expect(page.locator("#pdf-text")).toContainText("Continuous page 2");
+  await page.locator("#page-number").fill("8");
+  await page.locator("#page-number").press("Enter");
+  await expect(page.locator("#pdf-text")).toContainText("Continuous page 8");
+  await expect
+    .poll(() =>
+      page.locator('[data-pdf-page="1"] canvas').evaluate((el) => el.width),
+    )
+    .toBe(1);
+  expect(
+    await page
+      .locator(".pdf-canvas")
+      .evaluateAll((els) => els.filter((el) => el.width > 1).length),
+  ).toBeLessThanOrEqual(5);
+  await page.locator("#back").click();
+  await page.locator(".book-open").click();
+  await expect(page.locator("#reader-loading")).toBeHidden();
+  await expect(page.locator("#page-number")).toHaveValue("8");
+  await expect(page.locator("#pdf-text")).toContainText("Continuous page 8");
+  await page.locator("#page-number").fill("1");
+  await page.locator("#page-number").press("Enter");
+  await page.locator("#pdf-container").evaluate((el) => (el.scrollTop = 750));
+  await page.screenshot({ path: "test-results/continuous-pdf-desktop.png" });
 });

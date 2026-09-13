@@ -1117,10 +1117,10 @@ dialog > p {
   background: white;
   flex-shrink: 0;
 }
-#pdf-canvas {
+.pdf-canvas {
   display: block;
 }
-:root[data-theme="dark"] #pdf-canvas {
+:root[data-theme="dark"] .pdf-canvas {
   filter: invert(0.87) hue-rotate(180deg);
 }
 .pdf-page .textLayer {
@@ -1170,7 +1170,7 @@ dialog > p {
   gap: 10px;
 }
 .size-controls {
-  width: 140px;
+  width: 190px;
   justify-content: flex-end;
 }
 #size-label {
@@ -2670,7 +2670,7 @@ dialog > p {
   font-size: 13px;
   line-height: 1.8;
 }
-#pdf-annotations {
+.pdf-annotations {
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -2686,7 +2686,7 @@ dialog > p {
 .pdf-highlight.underline {
   border-bottom: 2px solid var(--mark-color);
 }
-#pdf-text {
+.pdf-text {
   z-index: 2;
 }
 .annotate-selection {
@@ -2896,4 +2896,17 @@ dialog > p {
   padding: 12px;
   background: var(--accent-soft);
   border-left: 3px solid var(--accent);
+}
+
+#pdf-container {
+  position: relative;
+  overflow-anchor: none;
+}
+#pdf-container .pdf-page {
+  margin-bottom: 24px;
+}
+
+#pdf-zoom-reset {
+  white-space: nowrap;
+  padding: 4px 8px;
 }

@@ -113,7 +113,7 @@ test("PDF selection translates, then right sidebar analyzes, explains and resear
   expect(calls.at(-1).action).toBe("research");
   await expect(page.locator("#study-status")).toContainText("已完成");
   await page.screenshot({ path: "test-results/study-desktop.png" });
-  await page.locator("#next-page").click();
+  await page.keyboard.press("ArrowRight");
   await expect(page.locator("#study-panel")).toBeHidden();
   expect(errors).toEqual([]);
 });

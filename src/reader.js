@@ -94,10 +94,20 @@ export class Reader {
     });
   }
   captureAnnotation(selection) {
-    if (!this.pdf || this.renderedPage !== this.page || !this.viewport)
+    if (!this.pdf) return null;
+    const range = selection.getRangeAt(0);
+    const element = (node) => (node.nodeType === 1 ? node : node.parentElement);
+    const wrapper = element(range.startContainer)?.closest("[data-pdf-page]");
+    if (
+      !wrapper ||
+      wrapper !== element(range.endContainer)?.closest("[data-pdf-page]")
+    )
       return null;
-    const range = selection.getRangeAt(0),
-      bounds = document.querySelector("#pdf-page").getBoundingClientRect();
+    const record = this.pdfRows?.[Number(wrapper.dataset.pdfPage) - 1];
+    if (!record?.viewport || !record.ready) return null;
+    const bounds = wrapper.getBoundingClientRect(),
+      viewport = record.viewport,
+      pageNumber = record.number;
     const rects = [],
       seen = new Set();
     for (const rect of range.getClientRects()) {
@@ -106,8 +116,8 @@ export class Reader {
         right = Math.min(bounds.width, rect.right - bounds.left),
         bottom = Math.min(bounds.height, rect.bottom - bounds.top);
       if (right - left < 0.5 || bottom - top < 0.5) continue;
-      const a = this.viewport.convertToPdfPoint(left, top),
-        b = this.viewport.convertToPdfPoint(right, bottom);
+      const a = viewport.convertToPdfPoint(left, top),
+        b = viewport.convertToPdfPoint(right, bottom);
       const pdfRect = [
         Math.min(a[0], b[0]),
         Math.min(a[1], b[1]),
@@ -122,17 +132,20 @@ export class Reader {
     }
     if (!rects.length || rects.length > 200) return null;
     const prefix = range.cloneRange();
-    prefix.selectNodeContents(document.querySelector("#pdf-text"));
+    prefix.selectNodeContents(record.layer);
     prefix.setEnd(range.startContainer, range.startOffset);
     const offset = Math.min(999999, prefix.toString().length),
       distance = Math.max(
         0,
-        Math.min(99999, Math.floor((this.pageView?.[3] || 0) - rects[0][3])),
+        Math.min(
+          99999,
+          Math.floor((record.proxy.view?.[3] || 0) - rects[0][3]),
+        ),
       );
     return {
-      position: { pageIndex: this.page - 1, rects },
-      pageLabel: this.pageLabels?.[this.page - 1] || String(this.page),
-      sortIndex: `${String(this.page - 1).padStart(5, "0")}|${String(offset).padStart(6, "0")}|${String(distance).padStart(5, "0")}`,
+      position: { pageIndex: pageNumber - 1, rects },
+      pageLabel: this.pageLabels?.[pageNumber - 1] || String(pageNumber),
+      sortIndex: `${String(pageNumber - 1).padStart(5, "0")}|${String(offset).padStart(6, "0")}|${String(distance).padStart(5, "0")}`,
     };
   }
   setAnnotations(annotations) {
@@ -140,32 +153,33 @@ export class Reader {
     this.renderAnnotations();
   }
   renderAnnotations() {
-    const layer = document.querySelector("#pdf-annotations");
-    if (!layer) return;
-    layer.replaceChildren();
-    if (!this.viewport || this.renderedPage !== this.page) return;
-    for (const annotation of this.annotations || []) {
-      if (annotation.position.pageIndex !== this.page - 1) continue;
-      for (const rect of annotation.position.rects) {
-        const r = [
-            ...this.viewport.convertToViewportPoint(rect[0], rect[1]),
-            ...this.viewport.convertToViewportPoint(rect[2], rect[3]),
-          ],
-          mark = document.createElement("span");
-        const left = Math.min(r[0], r[2]),
-          top = Math.min(r[1], r[3]),
-          width = Math.abs(r[2] - r[0]),
-          height = Math.abs(r[3] - r[1]);
-        mark.className = "pdf-highlight " + annotation.type;
-        mark.dataset.annotation = annotation.key;
-        Object.assign(mark.style, {
-          left: `${left}px`,
-          top: `${top}px`,
-          width: `${width}px`,
-          height: `${height}px`,
-        });
-        mark.style.setProperty("--mark-color", annotation.color);
-        layer.append(mark);
+    for (const record of this.pdfRows || []) {
+      const layer = record.marks;
+      if (!record.ready || !record.viewport) continue;
+      layer.replaceChildren();
+      for (const annotation of this.annotations || []) {
+        if (annotation.position.pageIndex !== record.number - 1) continue;
+        for (const rect of annotation.position.rects) {
+          const r = [
+              ...record.viewport.convertToViewportPoint(rect[0], rect[1]),
+              ...record.viewport.convertToViewportPoint(rect[2], rect[3]),
+            ],
+            mark = document.createElement("span");
+          const left = Math.min(r[0], r[2]),
+            top = Math.min(r[1], r[3]),
+            width = Math.abs(r[2] - r[0]),
+            height = Math.abs(r[3] - r[1]);
+          mark.className = "pdf-highlight " + annotation.type;
+          mark.dataset.annotation = annotation.key;
+          Object.assign(mark.style, {
+            left: `${left}px`,
+            top: `${top}px`,
+            width: `${width}px`,
+            height: `${height}px`,
+          });
+          mark.style.setProperty("--mark-color", annotation.color);
+          layer.append(mark);
+        }
       }
     }
   }
@@ -263,7 +277,7 @@ export class Reader {
           if (!this.destroyed) this.onToc(entries);
         })
         .catch(() => {});
-      this.watchSelection(document, document.querySelector("#pdf-text"));
+      this.watchSelection(document, document.querySelector("#pdf-container"));
       await this.renderPdf();
     } else {
       this.epub = ePub();
@@ -278,9 +292,22 @@ export class Reader {
         flow: "paginated",
         allowScriptedContent: false,
       });
-      this.rendition.hooks.content.register((contents) =>
-        this.watchSelection(contents.document, contents.document.body),
-      );
+      this.rendition.hooks.content.register((contents) => {
+        this.watchSelection(contents.document, contents.document.body);
+        contents.document.addEventListener(
+          "wheel",
+          (e) => {
+            if (e.ctrlKey || e.metaKey || Math.abs(e.deltaY) < 2) return;
+            e.preventDefault();
+            if (Date.now() - (this.lastEpubWheel || 0) < 350) return;
+            this.lastEpubWheel = Date.now();
+            this.turn(e.deltaY > 0 ? 1 : -1).catch(() =>
+              this.onError("翻页失败"),
+            );
+          },
+          { passive: false },
+        );
+      });
       this.rendition.themes.default({
         body: {
           "font-family":
@@ -356,21 +383,190 @@ export class Reader {
       chapter?.label?.trim() || `章节 ${(section?.index || 0) + 1} / ${total}`,
     );
   }
+  async initPdfPages() {
+    const container = document.querySelector("#pdf-container");
+    container.replaceChildren();
+    this.pdfRows = [];
+    for (let number = 1; number <= this.pdf.numPages; number++) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "pdf-page";
+      wrapper.dataset.pdfPage = number;
+      wrapper.setAttribute("aria-label", `第 ${number} 页`);
+      const canvas = document.createElement("canvas");
+      canvas.className = "pdf-canvas";
+      const marks = document.createElement("div");
+      marks.className = "pdf-annotations";
+      const layer = document.createElement("div");
+      layer.className = "pdf-text textLayer";
+      wrapper.append(canvas, marks, layer);
+      container.append(wrapper);
+      this.pdfRows.push({
+        number,
+        wrapper,
+        canvas,
+        marks,
+        layer,
+        ready: false,
+        epoch: 0,
+      });
+    }
+    for (let start = 0; start < this.pdfRows.length; start += 16) {
+      if (this.destroyed) return;
+      await Promise.all(
+        this.pdfRows.slice(start, start + 16).map(async (row) => {
+          row.proxy = await this.pdf.getPage(row.number);
+          row.original = row.proxy.getViewport({ scale: 1 });
+        }),
+      );
+    }
+    container.addEventListener(
+      "scroll",
+      () => {
+        if (this.scrollFrame) return;
+        this.scrollFrame = requestAnimationFrame(() => {
+          this.scrollFrame = null;
+          if (!this.destroyed && !this.layoutBusy)
+            this.updatePdfWindow().catch((e) => this.onError(e.message));
+        });
+      },
+      { passive: true, signal: this.selectionAbort.signal },
+    );
+  }
+  activatePdfPage(number) {
+    const previous = this.pdfRows[this.page - 1];
+    if (previous)
+      for (const node of [
+        previous.wrapper,
+        previous.canvas,
+        previous.layer,
+        previous.marks,
+      ])
+        node.removeAttribute("id");
+    const changed = this.page !== number;
+    this.page = number;
+    const row = this.pdfRows[number - 1];
+    row.wrapper.id = "pdf-page";
+    row.canvas.id = "pdf-canvas";
+    row.layer.id = "pdf-text";
+    row.marks.id = "pdf-annotations";
+    this.viewport = row.viewport;
+    this.pageView = row.proxy.view;
+    this.renderedPage = row.ready ? number : null;
+    this.atStart = number === 1;
+    this.atEnd = number === this.pdf.numPages;
+    if (changed || !this.reportedPdfPage) {
+      this.reportedPdfPage = number;
+      this.onProgress(number, number / this.pdf.numPages, `第 ${number} 页`);
+    }
+  }
+  pageAt(offset) {
+    let lo = 0,
+      hi = this.pdfRows.length - 1;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (this.pdfRows[mid].wrapper.offsetTop <= offset) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  }
+  async updatePdfWindow() {
+    if (this.destroyed || !this.pdfRows?.length) return;
+    const container = document.querySelector("#pdf-container");
+    const first = this.pageAt(container.scrollTop),
+      last = this.pageAt(container.scrollTop + container.clientHeight);
+    const current =
+      container.scrollTop > 0 &&
+      container.scrollTop + container.clientHeight >= container.scrollHeight - 2
+        ? this.pdfRows.length - 1
+        : this.pageAt(
+            container.scrollTop + Math.min(240, container.clientHeight * 0.35),
+          );
+    this.activatePdfPage(current + 1);
+    const pending = [];
+    for (let i = 0; i < this.pdfRows.length; i++) {
+      const row = this.pdfRows[i];
+      if (
+        i >= Math.max(0, first - 1) &&
+        i <= Math.min(this.pdfRows.length - 1, last + 1)
+      )
+        pending.push(this.renderPdfRow(row));
+      else if (row.ready || row.promise) this.clearPdfRow(row);
+    }
+    await Promise.all(pending);
+    if (!this.destroyed) {
+      this.activatePdfPage(this.page);
+      this.renderAnnotations();
+    }
+  }
+  clearPdfRow(row) {
+    row.epoch++;
+    row.task?.cancel();
+    row.retiring = row.task?.promise.catch(() => {});
+    row.textLayer?.cancel();
+    row.task = null;
+    row.promise = null;
+    row.ready = false;
+    row.canvas.width = 1;
+    row.canvas.height = 1;
+    row.canvas.style.width = "100%";
+    row.canvas.style.height = "100%";
+    row.layer.replaceChildren();
+    row.marks.replaceChildren();
+  }
+  async renderPdfRow(row) {
+    if (row.ready) return;
+    if (row.promise) return row.promise;
+    const epoch = row.epoch;
+    row.promise = (async () => {
+      await row.retiring;
+      if (this.destroyed || row.epoch !== epoch) return;
+      const ratio = Math.min(window.devicePixelRatio || 1, 2),
+        viewport = row.viewport;
+      row.canvas.width = Math.floor(viewport.width * ratio);
+      row.canvas.height = Math.floor(viewport.height * ratio);
+      row.canvas.style.width = `${viewport.width}px`;
+      row.canvas.style.height = `${viewport.height}px`;
+      row.task = row.proxy.render({
+        canvasContext: row.canvas.getContext("2d"),
+        viewport,
+        transform: ratio === 1 ? null : [ratio, 0, 0, ratio, 0, 0],
+      });
+      await row.task.promise;
+      if (this.destroyed || row.epoch !== epoch) return;
+      row.textLayer = new pdfjs.TextLayer({
+        textContentSource: await row.proxy.getTextContent(),
+        container: row.layer,
+        viewport,
+      });
+      if (this.destroyed || row.epoch !== epoch) return;
+      await row.textLayer.render();
+      if (this.destroyed || row.epoch !== epoch) return;
+      row.ready = true;
+    })()
+      .catch((e) => {
+        if (
+          e.name !== "RenderingCancelledException" &&
+          !this.destroyed &&
+          row.epoch === epoch
+        )
+          throw e;
+      })
+      .finally(() => {
+        if (row.epoch === epoch) row.promise = null;
+      });
+    return row.promise;
+  }
   async renderPdf() {
     if (this.destroyed) return;
     const version = ++this.renderVersion;
-    this.renderedPage = null;
-    this.renderAnnotations();
-    if (this.renderTask) {
-      this.renderTask.cancel();
-      await this.renderTask.promise.catch(() => {});
-    }
-    this.textLayer?.cancel();
-    const pageNumber = this.page;
-    const page = await this.pdf.getPage(pageNumber);
-    if (version !== this.renderVersion || this.destroyed) return;
+    this.layoutBusy = true;
+    if (!this.pdfRows) await (this.pdfInit ||= this.initPdfPages());
+    else if (this.pdfInit) await this.pdfInit;
+    if (this.destroyed || version !== this.renderVersion) return;
     const container = document.querySelector("#pdf-container");
-    const original = page.getViewport({ scale: 1 });
+    const current = this.pdfRows[this.page - 1];
+    const oldOffset = current.wrapper.offsetTop,
+      oldScroll = container.scrollTop;
     const width = Math.min(
       900,
       Math.max(
@@ -378,52 +574,32 @@ export class Reader {
         container.clientWidth - (window.innerWidth < 600 ? 24 : 80),
       ),
     );
-    const viewport = page.getViewport({
-      scale: (width / original.width) * this.scale,
-    });
-    const ratio = Math.min(window.devicePixelRatio || 1, 2);
-    const canvas = document.querySelector("#pdf-canvas");
-    canvas.width = Math.floor(viewport.width * ratio);
-    canvas.height = Math.floor(viewport.height * ratio);
-    canvas.style.width = `${viewport.width}px`;
-    canvas.style.height = `${viewport.height}px`;
-    const wrapper = document.querySelector("#pdf-page");
-    wrapper.style.width = `${viewport.width}px`;
-    wrapper.style.height = `${viewport.height}px`;
-    wrapper.style.setProperty("--scale-factor", viewport.scale);
-    wrapper.style.setProperty("--total-scale-factor", viewport.scale);
-    const layer = document.querySelector("#pdf-text");
-    layer.innerHTML = "";
-    this.renderTask = page.render({
-      canvasContext: canvas.getContext("2d"),
-      viewport,
-      transform: ratio === 1 ? null : [ratio, 0, 0, ratio, 0, 0],
-    });
-    try {
-      await this.renderTask.promise;
-    } catch (e) {
-      if (e.name === "RenderingCancelledException") return;
-      throw e;
+    const layout = width * this.scale;
+    if (this.pdfLayout !== layout) {
+      this.pdfLayout = layout;
+      const cancelled = this.pdfRows.map((row) => row.promise?.catch(() => {}));
+      this.pdfRows.forEach((row) => this.clearPdfRow(row));
+      await Promise.all(cancelled);
+      if (this.destroyed || version !== this.renderVersion) return;
+      for (const row of this.pdfRows) {
+        row.viewport = row.proxy.getViewport({
+          scale: layout / row.original.width,
+        });
+        row.wrapper.style.width = `${row.viewport.width}px`;
+        row.wrapper.style.height = `${row.viewport.height}px`;
+        row.wrapper.style.setProperty("--scale-factor", row.viewport.scale);
+        row.wrapper.style.setProperty(
+          "--total-scale-factor",
+          row.viewport.scale,
+        );
+      }
+      container.scrollTop = this.pdfPositioned
+        ? oldScroll + current.wrapper.offsetTop - oldOffset
+        : current.wrapper.offsetTop - 28;
+      this.pdfPositioned = true;
     }
-    if (version !== this.renderVersion || this.destroyed) return;
-    this.textLayer = new pdfjs.TextLayer({
-      textContentSource: await page.getTextContent(),
-      container: layer,
-      viewport,
-    });
-    await this.textLayer.render().catch(() => {});
-    if (version !== this.renderVersion || this.destroyed) return;
-    this.viewport = viewport;
-    this.pageView = page.view;
-    this.renderedPage = pageNumber;
-    this.renderAnnotations();
-    this.atStart = pageNumber === 1;
-    this.atEnd = pageNumber === this.pdf.numPages;
-    this.onProgress(
-      pageNumber,
-      pageNumber / this.pdf.numPages,
-      `第 ${pageNumber} 页`,
-    );
+    this.layoutBusy = false;
+    await this.updatePdfWindow();
   }
   async turn(direction) {
     if (this.destroyed || this.turning) return;
@@ -439,9 +615,15 @@ export class Reader {
   async go(target) {
     if (this.destroyed) return;
     if (this.pdf) {
-      this.page = Math.max(1, Math.min(this.pdf.numPages, Number(target)));
-      await this.renderPdf();
-      document.querySelector("#pdf-container").scrollTop = 0;
+      this.activatePdfPage(
+        Math.max(1, Math.min(this.pdf.numPages, Number(target))),
+      );
+      const row = this.pdfRows?.[this.page - 1];
+      if (row) {
+        document.querySelector("#pdf-container").scrollTop =
+          row.wrapper.offsetTop - 28;
+        await this.updatePdfWindow();
+      }
     } else if (this.rendition) await this.rendition.display(target);
   }
   setTheme(theme) {
@@ -491,6 +673,8 @@ export class Reader {
     this.selectionAbort.abort();
     this.renderVersion++;
     this.resizeObserver?.disconnect();
+    for (const row of this.pdfRows || []) this.clearPdfRow(row);
+    cancelAnimationFrame(this.scrollFrame);
     this.renderTask?.cancel();
     this.textLayer?.cancel();
     this.loadingTask?.destroy().catch(() => {});
