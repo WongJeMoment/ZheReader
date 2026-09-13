@@ -143,3 +143,10 @@ Playwright 覆盖定时主题、EPUB 导入与目录、书签、进度恢复、P
 ## 技术
 
 Vite、原生 JavaScript、IndexedDB（idb）、[PDF.js](https://mozilla.github.io/pdf.js/)、[epub.js](https://github.com/futurepress/epub.js)、Lucide 图标与 Playwright。PDF worker、CMap、标准字体和 WASM 与网站一同部署，无须第三方 PDF 阅读服务。
+
+
+## 按标签查找书籍
+
+书架搜索框按标签名称匹配，点击标签按钮可精确筛选，也可查看「未添加标签」的书籍。每本书的「编辑标签」可添加本地标签，用逗号或换行分隔；本地标签保存在当前浏览器。
+
+Zotero 配套插件 1.0.2 起读取论文条目和 PDF 附件上的标签。安装新版后点击「刷新分类与关联」，已导入论文即可按 Zotero 标签查找。Zotero 标签在 Zotero 中编辑，本地标签不会回写 Zotero，刷新关联时会保留。

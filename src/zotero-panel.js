@@ -14,7 +14,7 @@ export function createZoteroPanel({
   const $ = (id) => document.getElementById(id);
   const dialog = document.createElement("dialog");
   dialog.id = "zotero-dialog";
-  dialog.innerHTML = `<div class="dialog-title"><h2>Zotero 分类与标注</h2><button id="zotero-close" class="icon-button" aria-label="关闭 Zotero 设置">${icon("x")}</button></div><p>连接本机 Zotero，按原有分类整理论文，并回传原生 PDF 高亮、下划线和评论。</p><ol class="zotero-steps"><li><a id="zotero-addon-download" download href="${import.meta.env.BASE_URL}downloads/zhereader-zotero.xpi">下载 ZheReader Zotero 插件</a>（适配 Zotero 9）。</li><li>在 Zotero「工具 → 插件」中，点击齿轮菜单「从文件安装插件」，选择下载的 XPI。</li><li>保持 Zotero 开启，连接本机服务后，点击下方「连接 Zotero」，并在 Zotero 窗口确认授权。</li></ol><div class="zotero-buttons"><button id="zotero-pair-bridge" class="secondary">连接本机服务</button><button id="zotero-connect" class="primary">连接 Zotero</button><button id="zotero-refresh" class="secondary">刷新分类与关联</button></div><p id="zotero-status" role="status"></p><p class="cloud-hint">分类来自 Zotero「我的文库」。通过坚果云导入的附件会按附件编号关联；既有论文也可以刷新关联。标注先保存在浏览器，点击「同步到 Zotero」后回传；关闭 Zotero 时可继续离线标注。</p>`;
+  dialog.innerHTML = `<div class="dialog-title"><h2>Zotero 分类与标注</h2><button id="zotero-close" class="icon-button" aria-label="关闭 Zotero 设置">${icon("x")}</button></div><p>连接本机 Zotero，按原有分类整理论文，并回传原生 PDF 高亮、下划线和评论。</p><ol class="zotero-steps"><li><a id="zotero-addon-download" download href="${import.meta.env.BASE_URL}downloads/zhereader-zotero.xpi">下载 ZheReader Zotero 插件</a>（1.0.2，适配 Zotero 9，支持标签）。</li><li>在 Zotero「工具 → 插件」中，点击齿轮菜单「从文件安装插件」，选择下载的 XPI。</li><li>保持 Zotero 开启，连接本机服务后，点击下方「连接 Zotero」，并在 Zotero 窗口确认授权。</li></ol><div class="zotero-buttons"><button id="zotero-pair-bridge" class="secondary">连接本机服务</button><button id="zotero-connect" class="primary">连接 Zotero</button><button id="zotero-refresh" class="secondary">刷新分类与关联</button></div><p id="zotero-status" role="status"></p><p class="cloud-hint">分类来自 Zotero「我的文库」。通过坚果云导入的附件会按附件编号关联；既有论文也可以刷新关联。标注先保存在浏览器，点击「同步到 Zotero」后回传；关闭 Zotero 时可继续离线标注。</p>`;
   document.body.append(dialog);
   function enrich(book) {
     const key = book.cloudSource?.path
@@ -30,6 +30,7 @@ export function createZoteroPanel({
       instance: catalog.instance,
       attachmentKey: attachment.key,
       parentKey: attachment.parentKey,
+      tags: attachment.tags || [],
       collections: attachment.collections,
       collectionPaths: attachment.collections
         .map((k) => paths.find((c) => c.key === k)?.path)
@@ -87,7 +88,10 @@ export function createZoteroPanel({
     render();
     renderBooks();
     $("zotero-status").textContent =
-      `已读取 ${catalog.collections.length} 个分类，关联 ${count} 篇已导入论文。新导入附件将自动归类。`;
+      `已读取 ${catalog.collections.length} 个分类，关联 ${count} 篇已导入论文。新导入附件将自动归类。` +
+      (next.attachments.some((a) => !Array.isArray(a.tags))
+        ? " 标签读取需要安装 1.0.2 或更新的配套插件。"
+        : "标签已更新，可在书架按标签查找。");
   }
   async function run(fn) {
     for (const id of ["zotero-connect", "zotero-refresh", "zotero-pair-bridge"])

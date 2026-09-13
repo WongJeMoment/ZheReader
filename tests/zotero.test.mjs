@@ -42,6 +42,7 @@ async function fixture() {
     attachmentFilename: "paper.pdf",
     isAttachment: () => true,
     getFilePathAsync: async () => "/paper.pdf",
+    getTags: () => [{ tag: "机器学习" }],
     loadAllData: async () => {},
   };
   const parent = {
@@ -50,6 +51,7 @@ async function fixture() {
     isAttachment: () => false,
     getField: () => "Paper title",
     getCollections: () => [2],
+    getTags: () => [{ tag: "机器学习" }],
     loadAllData: async () => {},
   };
   const collections = [
@@ -83,6 +85,7 @@ async function fixture() {
           isAnnotation: () => true,
           parentID: att.id,
           annotationIsExternal: false,
+          getTags: () => [{ tag: "机器学习" }],
           loadAllData: async () => {},
           json: structuredClone(json),
           eraseTx: async () => {
@@ -154,6 +157,7 @@ test("plugin endpoints require pairing, reject web origins and unregister on shu
   assert.equal((await call("catalog", { instance: "other" })).code, 409);
   const catalog = await call("catalog");
   assert.equal(catalog.attachments[0].title, "Paper title");
+  assert.deepEqual(catalog.attachments[0].tags, ["机器学习"]);
   assert.equal(catalog.collections.length, 2);
   assert.equal(catalog.attachments[0].collections[0], "COLLECT3");
   plugin.stop();

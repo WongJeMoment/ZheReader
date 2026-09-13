@@ -63,7 +63,7 @@ var ZheReaderZoteroBridge = class {
       if (action === "status")
         return result(200, {
           available: true,
-          version: "1.0.1",
+          version: "1.0.2",
           zoteroVersion: this.Zotero.version,
         });
       if (action === "pair") {
@@ -134,6 +134,13 @@ var ZheReaderZoteroBridge = class {
         parentKey: parent?.key || null,
         title: source.getField("title") || item.getField("title"),
         filename: item.attachmentFilename || "",
+        tags: [
+          ...new Set(
+            [...source.getTags(), ...item.getTags()]
+              .map((t) => t.tag)
+              .filter(Boolean),
+          ),
+        ],
         collections: source
           .getCollections()
           .map((id) => Z.Collections.get(id)?.key)

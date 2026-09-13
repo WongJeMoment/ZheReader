@@ -1,3 +1,4 @@
+import { bookTags, createTagFilter } from "./tags";
 import {
   createIcons,
   BookOpen,
@@ -121,8 +122,8 @@ app.innerHTML = `
     <main class="library-main">
       <section class="welcome"><div><div class="eyebrow">YOUR QUIET CORNER</div><h1>让阅读，<span>慢下来。</span></h1><p>翻开一本书，给自己一段不被打扰的时光。</p></div><button class="primary" id="import-top">${i("plus")} 导入书籍</button></section>
       <section class="hero" id="hero"><div class="hero-copy"><span class="hero-kicker"><span class="status-dot"></span> 随时开始一段新的旅程</span><h2>世界很大，<br>也可以藏在一本书里。</h2><p>从你的第一本 PDF 或 EPUB 开始，<br>在这里，找到属于自己的阅读节奏。</p><button class="hero-action" id="demo">探索阅读体验 ${i("arrow-right")}</button></div><div class="book-scene" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><span class="scene-star">✳</span><div class="scene-book rear"><span>THE ART OF<br>SLOW LIVING</span></div><div class="scene-book front"><div class="cover-top">THE QUIET COLLECTION / 01</div><div class="cover-title">慢读<br><em>时光</em></div><div class="cover-line"></div><span class="cover-subtitle">A MOMENT<br>BETWEEN THE PAGES</span><span class="cover-bottom">ZHEREADER ORIGINAL</span></div><span class="scene-caption">ONE PAGE AT A TIME.</span></div></section>
-      <section class="shelf"><div class="shelf-heading"><div class="shelf-title"><h2 id="shelf-title">我的书架</h2><span id="book-count">0 本书</span></div><div class="shelf-tools"><label class="search-box">${i("search")}<input id="search" placeholder="搜索书名、作者" aria-label="搜索书名、作者" autocomplete="off"><kbd>/</kbd></label><select id="sort" aria-label="书架排序"><option value="recent">最近打开</option><option value="added">最近添加</option><option value="name">书名排序</option></select></div></div>
-      <div class="filter-row"><div class="format-tabs" role="group" aria-label="文件格式"><button class="active" data-format="all">全部</button><button data-format="pdf">PDF</button><button data-format="epub">EPUB</button></div><span class="local-hint">${i("check")} 本地保存，安心阅读</span></div><div id="books" class="book-grid"></div>
+      <section class="shelf"><div class="shelf-heading"><div class="shelf-title"><h2 id="shelf-title">我的书架</h2><span id="book-count">0 本书</span></div><div class="shelf-tools"><label class="search-box">${i("search")}<input id="search" placeholder="搜索标签" aria-label="搜索标签" autocomplete="off"><kbd>/</kbd></label><select id="sort" aria-label="书架排序"><option value="recent">最近打开</option><option value="added">最近添加</option><option value="name">书名排序</option></select></div></div>
+      <div class="filter-row"><div class="format-tabs" role="group" aria-label="文件格式"><button class="active" data-format="all">全部</button><button data-format="pdf">PDF</button><button data-format="epub">EPUB</button></div><span class="local-hint">${i("check")} 本地保存，安心阅读</span></div><div id="tag-filter" class="tag-filter" role="group" aria-label="按标签查找"></div><div id="books" class="book-grid"></div>
       <button class="dropzone" id="dropzone">${i("upload")}<span><strong>拖拽书籍到这里</strong>，或点击选择文件<small>支持 PDF、EPUB · 可一次导入多本</small></span><span class="drop-plus">${i("plus")}</span></button></section>
       <footer class="footer"><span>ZheReader <span class="muted">/ 为专注阅读而生</span></span><span>${i("leaf")} 昼夜流转，好书常伴</span></footer>
     </main>
@@ -247,8 +248,15 @@ document.querySelectorAll("dialog").forEach((d) =>
   }),
 );
 $("#privacy").onclick = () => $("#info-dialog").showModal();
+const tagUI = createTagFilter({
+  getBooks: () => books,
+  renderBooks,
+  saveBook: putBook,
+  notify: toast,
+});
 let format = "all";
 function renderBooks() {
+  tagUI.render(query);
   $("#all-count").textContent = books.length;
   const names = { all: "我的书架", recent: "最近阅读", bookmarked: "我的书签" };
   $("#shelf-title").textContent = $("#crumb").textContent = names[filter];
@@ -259,7 +267,7 @@ function renderBooks() {
         (filter !== "bookmarked" || b.bookmarks?.length) &&
         zoteroUI.matches(b) &&
         (format === "all" || b.type === format) &&
-        `${b.title} ${b.author}`.toLowerCase().includes(query.toLowerCase()),
+        tagUI.matches(b, query),
     )
     .sort((a, b) =>
       sort === "name"
@@ -273,16 +281,25 @@ function renderBooks() {
     ? selected
         .map(
           (b) =>
-            `<article class="book-card"><button class="book-open" data-open="${esc(b.id)}" aria-label="阅读 ${esc(b.title)}"><div class="book-cover palette-${b.color}"><span class="book-format">${b.type.toUpperCase()}</span><span class="book-cover-title">${esc(b.title)}</span><span class="book-cover-author">${esc(b.author || "私人藏书")}</span><div class="cover-decoration"></div><span class="book-cover-bottom">ZHEREADER / PERSONAL LIBRARY</span><span class="read-overlay">开始阅读 ${i("arrow-up-right")}</span></div><div class="book-info"><h3>${esc(b.title)}</h3><p>${esc(b.author || (b.type === "pdf" ? `${b.pages} 页 · PDF 文档` : "EPUB 电子书"))}</p><p class="book-collections">${esc(b.zotero?.collectionPaths?.join(" · ") || (b.zotero ? "Zotero 未分类" : ""))}</p><div class="book-progress"><span>${b.openedAt ? `已读 ${Math.round((b.progress || 0) * 100)}%` : "尚未开始"}${b.bookmarks?.length ? ` · ${b.bookmarks.length} 个书签` : ""}</span>${i("arrow-up-right")}</div><div class="progress-track"><span style="width:${Math.round((b.progress || 0) * 100)}%"></span></div></div></button><button class="remove-book icon-button" data-delete="${esc(b.id)}" aria-label="移除 ${esc(b.title)}">${i("trash-2")}</button></article>`,
+            `<article class="book-card"><button class="book-open" data-open="${esc(b.id)}" aria-label="阅读 ${esc(b.title)}"><div class="book-cover palette-${b.color}"><span class="book-format">${b.type.toUpperCase()}</span><span class="book-cover-title">${esc(b.title)}</span><span class="book-cover-author">${esc(b.author || "私人藏书")}</span><div class="cover-decoration"></div><span class="book-cover-bottom">ZHEREADER / PERSONAL LIBRARY</span><span class="read-overlay">开始阅读 ${i("arrow-up-right")}</span></div><div class="book-info"><h3>${esc(b.title)}</h3><p>${esc(b.author || (b.type === "pdf" ? `${b.pages} 页 · PDF 文档` : "EPUB 电子书"))}</p><p class="book-collections">${esc(b.zotero?.collectionPaths?.join(" · ") || (b.zotero ? "Zotero 未分类" : ""))}</p><div class="book-progress"><span>${b.openedAt ? `已读 ${Math.round((b.progress || 0) * 100)}%` : "尚未开始"}${b.bookmarks?.length ? ` · ${b.bookmarks.length} 个书签` : ""}</span>${i("arrow-up-right")}</div><div class="progress-track"><span style="width:${Math.round((b.progress || 0) * 100)}%"></span></div></div></button><div class="book-tags">${bookTags(
+              b,
+            )
+              .map((tag) => `<span class="book-tag">${esc(tag)}</span>`)
+              .join(
+                "",
+              )}<button class="edit-tags" data-tags="${esc(b.id)}">编辑标签</button></div><button class="remove-book icon-button" data-delete="${esc(b.id)}" aria-label="移除 ${esc(b.title)}">${i("trash-2")}</button></article>`,
         )
         .join("")
-    : `<div class="empty-state">${i(query ? "search" : filter === "bookmarked" ? "bookmark" : "book-open")}<h3>${query ? "还没有找到这本书" : filter === "bookmarked" ? "把喜欢的地方，留个记号" : filter === "recent" ? "下一页，从这里开始" : format !== "all" ? `还没有 ${format.toUpperCase()} 书籍` : "你的书架，等一本好书"}</h3><p>${query ? "试试其他书名或作者关键词。" : filter === "bookmarked" ? "阅读时点击书签图标，即可收藏当前页。" : filter === "recent" ? "打开一本书后，阅读记录会出现在这里。" : "导入自己的藏书，或先探索上方的阅读体验。"}</p></div>`;
+    : `<div class="empty-state">${i(query ? "search" : filter === "bookmarked" ? "bookmark" : "book-open")}<h3>${query ? "还没有找到这本书" : filter === "bookmarked" ? "把喜欢的地方，留个记号" : filter === "recent" ? "下一页，从这里开始" : format !== "all" ? `还没有 ${format.toUpperCase()} 书籍` : "你的书架，等一本好书"}</h3><p>${query ? "试试其他标签，或点击“编辑标签”为书籍添加标签。" : filter === "bookmarked" ? "阅读时点击书签图标，即可收藏当前页。" : filter === "recent" ? "打开一本书后，阅读记录会出现在这里。" : "导入自己的藏书，或先探索上方的阅读体验。"}</p></div>`;
   document
     .querySelectorAll("[data-open]")
     .forEach((b) => (b.onclick = () => openBook(b.dataset.open)));
   document
     .querySelectorAll("[data-delete]")
     .forEach((b) => (b.onclick = () => askDelete(b.dataset.delete)));
+  document
+    .querySelectorAll("[data-tags]")
+    .forEach((b) => (b.onclick = () => tagUI.edit(b.dataset.tags)));
   const last = books
     .filter((b) => b.openedAt)
     .sort((a, b) => b.openedAt - a.openedAt)[0];
