@@ -21,10 +21,16 @@ import {
   Trash2,
   Leaf,
   Check,
+  Headphones,
+  Volume2,
+  Play,
+  Pause,
+  Square,
 } from "lucide";
 import { listBooks, getFile, putBook, removeBook } from "./storage";
 import { readPreference, savePreference, resolvedTheme } from "./theme";
 import "./style.css";
+import { createSpeechPanel } from "./speech-panel";
 const iconSet = {
   BookOpen,
   Library,
@@ -47,6 +53,11 @@ const iconSet = {
   Trash2,
   Leaf,
   Check,
+  Headphones,
+  Volume2,
+  Play,
+  Pause,
+  Square,
 };
 const i = (name, cls = "") => `<i data-lucide="${name}" class="${cls}"></i>`;
 const esc = (s) =>
@@ -95,7 +106,7 @@ app.innerHTML = `
   </div>
 </div>
 <section id="reader-view" class="reader-view" hidden aria-label="阅读器">
-  <header class="reader-header"><button class="secondary" id="back">${i("chevron-left")}<span>书架</span></button><div class="reader-heading"><strong id="reader-title"></strong><span id="reader-subtitle"></span></div><div class="reader-actions"><button class="icon-button" id="toc-toggle" aria-label="目录与书签">${i("list")}</button><button class="icon-button" id="add-bookmark" aria-label="添加书签">${i("bookmark")}</button><button class="icon-button theme-open" aria-label="主题设置">${i("sun")}</button><button class="icon-button" id="fullscreen" aria-label="全屏阅读">${i("maximize")}</button></div></header>
+  <header class="reader-header"><button class="secondary" id="back">${i("chevron-left")}<span>书架</span></button><div class="reader-heading"><strong id="reader-title"></strong><span id="reader-subtitle"></span></div><div class="reader-actions"><button class="secondary speech-toggle" id="speech-toggle" aria-label="语音朗读" aria-expanded="false" aria-controls="speech-panel">${i("headphones")}<span>听书</span></button><button class="icon-button" id="toc-toggle" aria-label="目录与书签">${i("list")}</button><button class="icon-button" id="add-bookmark" aria-label="添加书签">${i("bookmark")}</button><button class="icon-button theme-open" aria-label="主题设置">${i("sun")}</button><button class="icon-button" id="fullscreen" aria-label="全屏阅读">${i("maximize")}</button></div></header>
   <div class="reader-body"><aside id="toc-panel" class="toc-panel" hidden><div class="toc-header"><h3>目录与书签</h3><button class="icon-button" id="toc-close" aria-label="关闭目录">${i("x")}</button></div><div class="toc-tabs"><button class="active" id="chapters-tab">目录</button><button id="bookmarks-tab">书签</button></div><div id="toc-list"></div></aside><div class="reading-stage" id="reading-stage"><div id="reader-loading" class="reader-loading">正在打开书籍…</div><div id="pdf-container"><div class="pdf-page" id="pdf-page"><canvas id="pdf-canvas"></canvas><div id="pdf-text" class="textLayer"></div></div></div><div id="epub-container"></div></div></div>
   <footer class="reader-footer"><span class="reader-progress" id="reader-progress">准备阅读</span><div class="page-controls"><button class="icon-button" id="prev-page" aria-label="上一页">${i("chevron-left")}</button><label id="pdf-jump"><input id="page-number" type="number" min="1" aria-label="跳转页码"><span id="page-total"></span></label><span id="epub-position" hidden></span><button class="icon-button" id="next-page" aria-label="下一页">${i("chevron-right")}</button></div><div class="size-controls"><button class="icon-button" id="size-down" aria-label="缩小字号或页面">${i("minus")}</button><span id="size-label">100%</span><button class="icon-button" id="size-up" aria-label="放大字号或页面">${i("plus")}</button></div></footer>
 </section>
@@ -115,6 +126,12 @@ function toast(message) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => ($("#toast").hidden = true), 5000);
 }
+const speechUI = createSpeechPanel({
+  getReader: () => reader,
+  icon: i,
+  refreshIcons: icons,
+  notify: toast,
+});
 function updateTheme() {
   const theme = resolvedTheme(themeMode);
   document.documentElement.dataset.theme = theme;
@@ -384,6 +401,7 @@ async function loadDemo() {
 let toc = [],
   showBookmarks = false;
 async function openBook(id) {
+  speechUI.reset();
   const token = ++openToken;
   active = books.find((b) => b.id === id);
   if (!active) return;
@@ -412,6 +430,9 @@ async function openBook(id) {
       book: current,
       data,
       fontSize,
+      onSelection: (text) => {
+        if (token === openToken) speechUI.selection(text);
+      },
       onProgress: async (position, progress, label) => {
         if (token !== openToken) return;
         current.position = position;
@@ -448,6 +469,7 @@ async function openBook(id) {
     $("#size-label").textContent =
       active.type === "pdf" ? "100%" : `${fontSize}px`;
     $("#reader-loading").hidden = true;
+    speechUI.setReady(true);
   } catch (error) {
     if (token !== openToken) return;
     $("#reader-loading").textContent =
@@ -456,6 +478,7 @@ async function openBook(id) {
   }
 }
 $("#back").onclick = async () => {
+  speechUI.reset();
   ++openToken;
   reader?.destroy();
   reader = null;
@@ -467,11 +490,13 @@ $("#back").onclick = async () => {
   renderBooks();
 };
 function navigate(direction) {
+  speechUI.selection("");
   reader?.turn(direction).catch((e) => toast(e.message || "翻页失败"));
 }
 $("#prev-page").onclick = () => navigate(-1);
 $("#next-page").onclick = () => navigate(1);
 $("#page-number").onchange = (e) => {
+  speechUI.selection("");
   const page = Number(e.target.value);
   if (Number.isInteger(page) && page >= 1 && page <= active.pages)
     reader?.go(page).catch(() => toast("跳转失败"));

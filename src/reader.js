@@ -2,6 +2,7 @@ import * as pdfjs from "pdfjs-dist";
 import worker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import ePub from "epubjs";
 import "./pdf-text.css";
+import { documentText } from "./speech";
 pdfjs.GlobalWorkerOptions.workerSrc = worker;
 const assets = new URL(
   `${import.meta.env.BASE_URL}pdf-assets/`,
@@ -56,8 +57,77 @@ export class Reader {
     this.renderVersion = 0;
     this.atStart = false;
     this.atEnd = false;
+    this.selectionAbort = new AbortController();
   }
-  async open() {
+  watchSelection(doc, root) {
+    const publish = () => {
+      if (this.destroyed) return;
+      const selection = doc.getSelection();
+      if (
+        selection?.rangeCount &&
+        root.contains(selection.anchorNode) &&
+        root.contains(selection.focusNode)
+      ) {
+        const text = selection.toString().trim();
+        if (text) this.onSelection?.(text);
+      }
+    };
+    doc.addEventListener("pointerup", publish, {
+      signal: this.selectionAbort.signal,
+    });
+    doc.addEventListener("keyup", publish, {
+      signal: this.selectionAbort.signal,
+    });
+    root.addEventListener("pointerdown", () => this.onSelection?.(""), {
+      signal: this.selectionAbort.signal,
+    });
+  }
+  async *speechSections({ fromCurrent = false, signal } = {}) {
+    if (this.pdf) {
+      const start = fromCurrent ? this.page : 1;
+      for (
+        let pageNumber = start;
+        pageNumber <= this.pdf.numPages;
+        pageNumber++
+      ) {
+        if (signal?.aborted || this.destroyed) return;
+        const page = await this.pdf.getPage(pageNumber);
+        const content = await page.getTextContent();
+        if (signal?.aborted || this.destroyed) return;
+        const text = content.items
+          .map((item) =>
+            "str" in item ? item.str + (item.hasEOL ? "\n" : " ") : "",
+          )
+          .join("")
+          .trim();
+        yield { text, location: `第 ${pageNumber} / ${this.pdf.numPages} 页` };
+      }
+    } else if (this.epub) {
+      const current = this.rendition?.currentLocation()?.start;
+      const index = fromCurrent
+        ? this.epub.spine.get(current?.cfi)?.index || 0
+        : 0;
+      for (const section of this.epub.spine.spineItems) {
+        if (section.index < index || !section.linear) continue;
+        if (signal?.aborted || this.destroyed) return;
+        // Load a detached document, leaving displayed pages and location generation alone.
+        const doc = await this.epub.load(section.url);
+        if (signal?.aborted || this.destroyed) return;
+        const body = doc.querySelector("body") || doc.documentElement;
+        const text = documentText(body);
+        const chapter = this.epub.navigation.get(section.href);
+        yield {
+          text,
+          location: chapter?.label?.trim() || `第 ${section.index + 1} 章`,
+        };
+      }
+    }
+  }
+  open() {
+    this.opening = this.openInternal();
+    return this.opening;
+  }
+  async openInternal() {
     if (this.book.type === "pdf") {
       this.loadingTask = pdfjs.getDocument(pdfOptions(this.data));
       this.loadingTask.onPassword = (update, reason) => {
@@ -106,6 +176,7 @@ export class Reader {
           if (!this.destroyed) this.onToc(entries);
         })
         .catch(() => {});
+      this.watchSelection(document, document.querySelector("#pdf-text"));
       await this.renderPdf();
     } else {
       this.epub = ePub();
@@ -120,6 +191,9 @@ export class Reader {
         flow: "paginated",
         allowScriptedContent: false,
       });
+      this.rendition.hooks.content.register((contents) =>
+        this.watchSelection(contents.document, contents.document.body),
+      );
       this.rendition.themes.default({
         body: {
           "font-family":
@@ -302,13 +376,16 @@ export class Reader {
   }
   destroy() {
     this.destroyed = true;
+    this.selectionAbort.abort();
     this.renderVersion++;
     this.resizeObserver?.disconnect();
     this.renderTask?.cancel();
     this.textLayer?.cancel();
-    this.loadingTask?.destroy();
-    this.rendition?.destroy();
-    this.epub?.destroy();
-    document.querySelector("#epub-container").innerHTML = "";
+    this.loadingTask?.destroy().catch(() => {});
+    // epub.js mutates its loading state until opening completes. Release only
+    // this instance's DOM/resources afterward, without clearing a newer book.
+    const dispose = () => this.epub?.destroy();
+    if (this.opening) this.opening.then(dispose, dispose).catch(() => {});
+    else dispose();
   }
 }

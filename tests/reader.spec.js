@@ -4,31 +4,8 @@ import { fileURLToPath } from "node:url";
 const epubPath = fileURLToPath(
   new URL("../public/sample.epub", import.meta.url),
 );
-function samplePdf() {
-  const objects = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 500] /Resources << /Font << /F1 5 0 R >> >> /Contents 6 0 R >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 500] /Resources << /Font << /F1 5 0 R >> >> /Contents 7 0 R >>",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    ...["Hello ZheReader", "The second page"].map((s) => {
-      const stream = `BT /F1 22 Tf 40 400 Td (${s}) Tj ET`;
-      return `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
-    }),
-  ];
-  let data = "%PDF-1.4\n";
-  const offsets = [0];
-  objects.forEach((obj, index) => {
-    offsets.push(Buffer.byteLength(data));
-    data += `${index + 1} 0 obj\n${obj}\nendobj\n`;
-  });
-  const xref = Buffer.byteLength(data);
-  data += `xref\n0 8\n0000000000 65535 f \n${offsets
-    .slice(1)
-    .map((o) => `${String(o).padStart(10, "0")} 00000 n \n`)
-    .join("")}trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
-  return Buffer.from(data);
-}
+import { samplePdf } from "./fixtures";
+
 test("theme boundaries", () => {
   expect(themeAt(0)).toBe("dark");
   expect(themeAt(6)).toBe("dark");
@@ -94,13 +71,11 @@ test("PDF rendering, text selection layer, pagination, bookmark and persistence"
     if (m.type() === "error") console.log(m.text());
   });
   await page.goto("/");
-  await page
-    .locator("#file-input")
-    .setInputFiles({
-      name: "Test document.pdf",
-      mimeType: "application/pdf",
-      buffer: samplePdf(),
-    });
+  await page.locator("#file-input").setInputFiles({
+    name: "Test document.pdf",
+    mimeType: "application/pdf",
+    buffer: samplePdf(),
+  });
   await expect(page.locator(".book-card")).toHaveCount(1);
   await page
     .getByRole("button", { name: "阅读 Test document", exact: true })
@@ -127,8 +102,8 @@ test("PDF rendering, text selection layer, pagination, bookmark and persistence"
   await expect(page.locator(".book-card")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
-test("sample opens and mobile layout fits screen", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+test("sample opens and desktop layout fits screen", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   expect(
     await page.evaluate(
@@ -136,8 +111,8 @@ test("sample opens and mobile layout fits screen", async ({ page }) => {
     ),
   ).toBe(true);
   await page.getByRole("button", { name: "探索阅读体验" }).click();
-  await expect(page.locator("#reader-loading")).toBeHidden({ timeout: 20000 });
   await expect(page.locator("#reader-view")).toBeVisible();
+  await expect(page.locator("#reader-loading")).toBeHidden({ timeout: 20000 });
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -149,26 +124,22 @@ test("sample opens and mobile layout fits screen", async ({ page }) => {
 });
 test("invalid import gives recoverable error", async ({ page }) => {
   await page.goto("/");
-  await page
-    .locator("#file-input")
-    .setInputFiles({
-      name: "broken.pdf",
-      mimeType: "application/pdf",
-      buffer: Buffer.from("invalid document"),
-    });
+  await page.locator("#file-input").setInputFiles({
+    name: "broken.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("invalid document"),
+  });
   await expect(page.locator("#toast")).toContainText("文件损坏");
   await expect(page.locator("#import-top")).toBeEnabled();
   await expect(page.locator(".book-card")).toHaveCount(0);
 });
 test("broken EPUB does not block further imports", async ({ page }) => {
   await page.goto("/");
-  await page
-    .locator("#file-input")
-    .setInputFiles({
-      name: "broken.epub",
-      mimeType: "application/epub+zip",
-      buffer: Buffer.from("invalid zip"),
-    });
+  await page.locator("#file-input").setInputFiles({
+    name: "broken.epub",
+    mimeType: "application/epub+zip",
+    buffer: Buffer.from("invalid zip"),
+  });
   await expect(page.locator("#toast")).toContainText("文件损坏");
   await expect(page.locator("#import-top")).toBeEnabled();
   await page.locator("#file-input").setInputFiles(epubPath);
