@@ -1,0 +1,19 @@
+{
+  "addons": {
+    "zhereader@wongjemoment.github.io": {
+      "updates": [
+        {
+          "version": "1.0.1",
+          "update_link": "https://wongjemoment.github.io/ZheReader/downloads/zhereader-zotero.xpi",
+          "update_hash": "sha256:7056683828b7ecb959c5199196eec8b1d4911bdc3d06ca7e916637456c935732",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "9.0",
+              "strict_max_version": "9.0.*"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

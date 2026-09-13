@@ -98,7 +98,7 @@ npm run start
 
 插件只在 Zotero 的本机 HTTP 服务中注册固定接口，配对后接收分类读取和受限制的标注操作；不开放任意 JavaScript、文件路径或数据库语句执行。配对凭证只保存在插件和连接服务内存中，Zotero／服务重启或插件禁用后需重新连接。在 Zotero 禁用插件可撤销连接。
 
-已通过浏览器和插件协议替身测试，并核对本机 Zotero 9.0.1 的接口源码；插件安装后的真实文库回传仍需在 Zotero 中完成安装与连接授权后验证。配套插件依据 [Zotero 插件开发文档](https://www.zotero.org/support/dev/zotero_7_for_developers) 和原生 annotations API 实现；内置接口的版本限制见 [Zotero Local API](https://www.zotero.org/support/dev/web_api/v3/local_api)。
+已通过浏览器和插件协议替身测试，并在本机 Zotero 9.0.1 的独立配置和空文库中使用真实 AddonManager 验证 1.0.1 安装成功、插件启动及状态接口返回 200。1.0.1 修复了缺少必填 `update_url` 导致安装器拒绝的问题，构建时生成带 SHA-256 的更新清单。个人文库回传仍需完成连接授权后验证。配套插件依据 [Zotero 插件开发文档](https://www.zotero.org/support/dev/zotero_7_for_developers) 和原生 annotations API 实现；内置接口的版本限制见 [Zotero Local API](https://www.zotero.org/support/dev/web_api/v3/local_api)。
 
 ## 数据与支持范围
 

@@ -63,7 +63,7 @@ var ZheReaderZoteroBridge = class {
       if (action === "status")
         return result(200, {
           available: true,
-          version: "1.0.0",
+          version: "1.0.1",
           zoteroVersion: this.Zotero.version,
         });
       if (action === "pair") {

@@ -273,11 +273,32 @@ test("local service keeps Zotero token private and sends only constrained annota
   );
 });
 test("installable XPI contains manifest and loadable shared validation and bridge scripts", async () => {
-  const zip = await JSZip.loadAsync(
-    await readFile("public/downloads/zhereader-zotero.xpi"),
-  );
+  const archive = await readFile("public/downloads/zhereader-zotero.xpi");
+  const zip = await JSZip.loadAsync(archive);
   const manifest = JSON.parse(await zip.file("manifest.json").async("string"));
   assert.equal(manifest.applications.zotero.strict_max_version, "9.0.*");
+  const app = manifest.applications.zotero;
+  assert.equal(
+    app.update_url,
+    "https://wongjemoment.github.io/ZheReader/downloads/zotero-updates.json",
+  );
+  const updates = JSON.parse(
+    await readFile("public/downloads/zotero-updates.json", "utf8"),
+  );
+  const update = updates.addons[app.id].updates[0];
+  assert.equal(update.version, manifest.version);
+  assert.equal(
+    update.update_link,
+    new URL("zhereader-zotero.xpi", app.update_url).href,
+  );
+  assert.equal(
+    update.update_hash,
+    "sha256:" + createHash("sha256").update(archive).digest("hex"),
+  );
+  assert.deepEqual(update.applications.zotero, {
+    strict_min_version: app.strict_min_version,
+    strict_max_version: app.strict_max_version,
+  });
   const context = vm.createContext({});
   vm.runInContext(await zip.file("annotations.js").async("string"), context);
   vm.runInContext(await zip.file("bridge.js").async("string"), context);
