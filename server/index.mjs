@@ -1,3 +1,4 @@
+import { guideSources } from "../shared/paper-guide.js";
 import { createServer } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
@@ -215,9 +216,14 @@ export function createBridge({
           const input = await body(req);
           if (
             !input ||
-            !["translate", "analyze", "explain", "research"].includes(
-              input.action,
-            ) ||
+            ![
+              "translate",
+              "analyze",
+              "explain",
+              "research",
+              "paper-plan",
+              "paper-read",
+            ].includes(input.action) ||
             typeof input.text !== "string" ||
             !input.text.trim() ||
             input.text.length > 8000 ||
@@ -235,6 +241,7 @@ export function createBridge({
           res.on("close", () => {
             if (!res.writableEnded) abort.abort();
           });
+          if (input.action.startsWith("paper-")) guideSources(input.text);
           const result = await client.study(
             {
               action: input.action,

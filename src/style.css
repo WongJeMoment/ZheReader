@@ -2835,3 +2835,65 @@ dialog > p {
   color: var(--muted);
   font-size: 11px;
 }
+.paper-guide {
+  width: 430px;
+  flex: 0 0 430px;
+  box-sizing: border-box;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  padding: 24px;
+  overflow-y: auto;
+}
+.paper-guide[hidden] {
+  display: none;
+}
+.paper-guide p,
+.paper-guide blockquote {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.paper-guide label {
+  display: block;
+  margin: 16px 0 8px;
+  font-size: 13px;
+}
+.paper-guide textarea,
+.paper-guide input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 8px;
+  font: inherit;
+}
+.guide-controls,
+.guide-navigation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.guide-navigation {
+  font-size: 12px;
+  justify-content: space-between;
+}
+.guide-note,
+.paper-guide small {
+  color: var(--muted);
+}
+.guide-explanation {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 8px;
+}
+.guide-explanation blockquote {
+  margin: 12px 0;
+  padding: 12px;
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+}

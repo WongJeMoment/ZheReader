@@ -1,3 +1,8 @@
+import {
+  guideSchema,
+  guidePrompt,
+  validateGuide,
+} from "../shared/paper-guide.js";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { mkdir } from "node:fs/promises";
@@ -298,14 +303,25 @@ export class CodexClient {
         : model.defaultReasoningEffort;
       const started = await this.rpc("turn/start", {
         threadId,
-        input: [{ type: "text", text: buildPrompt(input) }],
-        outputSchema: resultSchema,
+        input: [
+          {
+            type: "text",
+            text: input.action.startsWith("paper-")
+              ? guidePrompt(input)
+              : buildPrompt(input),
+          },
+        ],
+        outputSchema: input.action.startsWith("paper-")
+          ? guideSchema
+          : resultSchema,
         ...(effort ? { effort } : {}),
       });
       turnId = started.turn.id;
       if (signal?.aborted) throw new Error("请求已取消");
       await completed;
-      const result = validateResult(JSON.parse(finalText));
+      const result = input.action.startsWith("paper-")
+        ? validateGuide(JSON.parse(finalText), input.text)
+        : validateResult(JSON.parse(finalText));
       return { ...result, model: model.model, searched };
     } finally {
       clearTimeout(timer);
